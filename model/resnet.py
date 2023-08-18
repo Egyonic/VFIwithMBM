@@ -10,6 +10,8 @@
 
 import torch
 import torch.nn as nn
+from model.warplayer import warp
+import torch.nn.functional as F
 
 class BasicBlock(nn.Module):
     """Basic Block for resnet 18 and resnet 34
@@ -163,7 +165,7 @@ def resnet152():
 
 class ResNet_feature(nn.Module):
 
-    def __init__(self, block, num_block, num_classes=100):
+    def __init__(self, block, num_block):
         super().__init__()
 
         self.in_channels = 64
@@ -172,14 +174,10 @@ class ResNet_feature(nn.Module):
             nn.Conv2d(3, 64, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True))
-        #we use a different inputsize than the original paper
-        #so conv2_x's stride is 1
-        self.conv2_x = self._make_layer(block, 16, num_block[0], 1)
+        self.conv2_x = self._make_layer(block, 16, num_block[0], 2)
         self.conv3_x = self._make_layer(block, 32, num_block[1], 2)
         self.conv4_x = self._make_layer(block, 64, num_block[2], 2)
         self.conv5_x = self._make_layer(block, 128, num_block[3], 2)
-        self.avg_pool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = nn.Linear(512 * block.expansion, num_classes)
 
     def _make_layer(self, block, out_channels, num_blocks, stride):
         """make resnet layers(by layer i didnt mean this 'layer' was the
@@ -206,13 +204,25 @@ class ResNet_feature(nn.Module):
 
         return nn.Sequential(*layers)
 
-    def forward(self, x):
-        output = self.conv1(x)
+    def forward(self, x, flow):
+        output = self.conv1(x)  # channel: 3 -> 64
         output = self.conv2_x(output)
+        flow = F.interpolate(flow, scale_factor=0.5, mode="bilinear", align_corners=False, recompute_scale_factor=False) * 0.5
+        f1 = warp(output, flow)
         output = self.conv3_x(output)
+        flow = F.interpolate(flow, scale_factor=0.5, mode="bilinear", align_corners=False, recompute_scale_factor=False) * 0.5
+        f2 = warp(output, flow)
         output = self.conv4_x(output)
+        flow = F.interpolate(flow, scale_factor=0.5, mode="bilinear", align_corners=False, recompute_scale_factor=False) * 0.5
+        f3 = warp(output, flow)
         output = self.conv5_x(output)
+        flow = F.interpolate(flow, scale_factor=0.5, mode="bilinear", align_corners=False, recompute_scale_factor=False) * 0.5
+        f4 = warp(output, flow)
+
+        return [f1, f2, f3, f4]
 
 
-        return output
-
+def resnet50_feature():
+    """ return a ResNet 50 object
+    """
+    return ResNet_feature(BottleNeck, [3, 4, 6, 3])
