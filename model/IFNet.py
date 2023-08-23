@@ -278,7 +278,7 @@ class IFNet_bf(nn.Module):
 
 class IFNet_bf_resnet_cbam(nn.Module):
     def __init__(self):
-        super(IFNet_bf, self).__init__()
+        super(IFNet_bf_resnet_cbam, self).__init__()
         self.block0 = IFBlock_bf(6, c=240, tf_dim=64)
         self.block1 = IFBlock_bf(13 + 4, c=150, tf_dim=64)
         self.block2 = IFBlock_bf(13 + 4, c=90, tf_dim=128)

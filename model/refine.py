@@ -155,11 +155,11 @@ class UnetCBAM(nn.Module):
         s0 = self.down0(torch.cat((img0, img1, warped_img0, warped_img1, mask, flow), 1))
         s0 = self.cbam0(s0) + s0
         s1 = self.down1(torch.cat((s0, c0[0], c1[0]), 1))
-        s1 = self.cbam0(s1) + s1
+        s1 = self.cbam1(s1) + s1
         s2 = self.down2(torch.cat((s1, c0[1], c1[1]), 1))
-        s2 = self.cbam0(s2) + s2
+        s2 = self.cbam2(s2) + s2
         s3 = self.down3(torch.cat((s2, c0[2], c1[2]), 1))
-        s3 = self.cbam0(s3) + s3
+        s3 = self.cbam3(s3) + s3
         x = self.up0(torch.cat((s3, c0[3], c1[3]), 1))
         x = self.up1(torch.cat((x, s2), 1))
         x = self.up2(torch.cat((x, s1), 1))

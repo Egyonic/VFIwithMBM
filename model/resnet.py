@@ -54,7 +54,7 @@ class BottleNeck(nn.Module):
     """Residual block for resnet over 50 layers
 
     """
-    expansion = 4
+    expansion = 1
     def __init__(self, in_channels, out_channels, stride=1):
         super().__init__()
         self.residual_function = nn.Sequential(
