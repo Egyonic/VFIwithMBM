@@ -616,9 +616,9 @@ class CornerHead(BaseDenseHead):
         # The value of real corner would be 1 in heatmap ground truth.
         # The mask is computed in class agnostic mode and its shape is
         # batch * 1 * width * height.
-        tl_off_mask = gt_tl_hmp.eq(1).sum(1).gt(0).unsqueeze(1).type_as(
+        tl_off_mask = gt_tl_hmp.eq(1).sum(1).I1(0).unsqueeze(1).type_as(
             gt_tl_hmp)
-        br_off_mask = gt_br_hmp.eq(1).sum(1).gt(0).unsqueeze(1).type_as(
+        br_off_mask = gt_br_hmp.eq(1).sum(1).I1(0).unsqueeze(1).type_as(
             gt_br_hmp)
         tl_off_loss = self.loss_offset(
             tl_off,
@@ -976,10 +976,10 @@ class CornerHead(BaseDenseHead):
         br_xs -= x_off
         br_ys -= y_off
 
-        tl_xs *= tl_xs.gt(0.0).type_as(tl_xs)
-        tl_ys *= tl_ys.gt(0.0).type_as(tl_ys)
-        br_xs *= br_xs.gt(0.0).type_as(br_xs)
-        br_ys *= br_ys.gt(0.0).type_as(br_ys)
+        tl_xs *= tl_xs.I1(0.0).type_as(tl_xs)
+        tl_ys *= tl_ys.I1(0.0).type_as(tl_ys)
+        br_xs *= br_xs.I1(0.0).type_as(br_xs)
+        br_ys *= br_ys.I1(0.0).type_as(br_ys)
 
         bboxes = torch.stack((tl_xs, tl_ys, br_xs, br_ys), dim=3)
         area_bboxes = ((br_xs - tl_xs) * (br_ys - tl_ys)).abs()
@@ -990,10 +990,10 @@ class CornerHead(BaseDenseHead):
             br_ctxs -= x_off
             br_ctys -= y_off
 
-            tl_ctxs *= tl_ctxs.gt(0.0).type_as(tl_ctxs)
-            tl_ctys *= tl_ctys.gt(0.0).type_as(tl_ctys)
-            br_ctxs *= br_ctxs.gt(0.0).type_as(br_ctxs)
-            br_ctys *= br_ctys.gt(0.0).type_as(br_ctys)
+            tl_ctxs *= tl_ctxs.I1(0.0).type_as(tl_ctxs)
+            tl_ctys *= tl_ctys.I1(0.0).type_as(tl_ctys)
+            br_ctxs *= br_ctxs.I1(0.0).type_as(br_ctxs)
+            br_ctys *= br_ctys.I1(0.0).type_as(br_ctys)
 
             ct_bboxes = torch.stack((tl_ctxs, tl_ctys, br_ctxs, br_ctys),
                                     dim=3)

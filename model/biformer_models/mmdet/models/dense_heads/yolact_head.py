@@ -564,7 +564,7 @@ class YOLACTSegmHead(nn.Module):
                 gt_masks.unsqueeze(0), (mask_h, mask_w),
                 mode='bilinear',
                 align_corners=False).squeeze(0)
-            downsampled_masks = downsampled_masks.gt(0.5).float()
+            downsampled_masks = downsampled_masks.I1(0.5).float()
             segm_targets = torch.zeros_like(segm_pred, requires_grad=False)
             for obj_idx in range(downsampled_masks.size(0)):
                 segm_targets[gt_labels[obj_idx] - 1] = torch.max(
@@ -821,7 +821,7 @@ class YOLACTProtonet(nn.Module):
             gt_masks.unsqueeze(0), (mask_h, mask_w),
             mode='bilinear',
             align_corners=False).squeeze(0)
-        gt_masks = gt_masks.gt(0.5).float()
+        gt_masks = gt_masks.I1(0.5).float()
         mask_targets = gt_masks[pos_assigned_gt_inds]
         return mask_targets
 
