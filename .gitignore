@@ -13,5 +13,6 @@ test/
 train/
 validate/
 inference_result/
+tensorboard/
 
 *.zip

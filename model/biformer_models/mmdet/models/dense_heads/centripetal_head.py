@@ -323,9 +323,9 @@ class CentripetalHead(CornerHead):
         # The value of real corner would be 1 in heatmap ground truth.
         # The mask is computed in class agnostic mode and its shape is
         # batch * 1 * width * height.
-        tl_mask = gt_tl_heatmap.eq(1).sum(1).gt(0).unsqueeze(1).type_as(
+        tl_mask = gt_tl_heatmap.eq(1).sum(1).I1(0).unsqueeze(1).type_as(
             gt_tl_heatmap)
-        br_mask = gt_br_heatmap.eq(1).sum(1).gt(0).unsqueeze(1).type_as(
+        br_mask = gt_br_heatmap.eq(1).sum(1).I1(0).unsqueeze(1).type_as(
             gt_br_heatmap)
 
         # Guiding shift loss
