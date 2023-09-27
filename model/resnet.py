@@ -12,6 +12,7 @@ import torch
 import torch.nn as nn
 from model.warplayer import warp
 import torch.nn.functional as F
+from model.gvt import alt_gvt_small_v2
 
 class BasicBlock(nn.Module):
     """Basic Block for resnet 18 and resnet 34
@@ -79,6 +80,37 @@ class BottleNeck(nn.Module):
 
     def forward(self, x):
         return nn.ReLU(inplace=True)(self.residual_function(x) + self.shortcut(x))
+
+class BottleNeck_tws(nn.Module):
+    """Residual block for resnet over 50 layers with Twins
+
+    """
+    expansion = 1
+    def __init__(self, in_channels, out_channels, stride=1):
+        super().__init__()
+        self.residual_function = nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(out_channels, out_channels, stride=stride, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(out_channels, out_channels * BottleNeck.expansion, kernel_size=1, bias=False),
+            nn.BatchNorm2d(out_channels * BottleNeck.expansion),
+        )
+
+
+        self.shortcut = nn.Sequential()
+
+        if stride != 1 or in_channels != out_channels * BottleNeck.expansion:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels * BottleNeck.expansion, stride=stride, kernel_size=1, bias=False),
+                nn.BatchNorm2d(out_channels * BottleNeck.expansion)
+            )
+
+    def forward(self, x):
+        return nn.ReLU(inplace=True)(self.residual_function(x) + self.shortcut(x))
+
 
 class ResNet(nn.Module):
 
@@ -226,3 +258,73 @@ def resnet50_feature():
     """ return a ResNet 50 object
     """
     return ResNet_feature(BottleNeck, [3, 4, 6, 3])
+
+
+class ResNet_twins(nn.Module):
+
+    def __init__(self, block, num_block):
+        super().__init__()
+
+        self.in_channels = 64
+
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(3, self.in_channels, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True))
+        self.conv2_x = self._make_layer(block, 16, num_block[0], 2)
+        self.conv3_x = self._make_layer(block, 32, num_block[1], 2)
+        self.conv4_x = self._make_layer(block, 64, num_block[2], 2)
+        self.conv5_x = self._make_layer(block, 128, num_block[3], 2)
+        self.tws1 = alt_gvt_small_v2(embed_dims=[64, 128, 128, 256])
+        self.tws2 = alt_gvt_small_v2(embed_dims=[128, 128, 256, 256])
+
+
+    def _make_layer(self, block, out_channels, num_blocks, stride):
+        """make resnet layers(by layer i didnt mean this 'layer' was the
+        same as a neuron netowork layer, ex. conv layer), one layer may
+        contain more than one residual block
+
+        Args:
+            block: block type, basic block or bottle neck block
+            out_channels: output depth channel number of this layer
+            num_blocks: how many blocks per layer
+            stride: the stride of the first block of this layer
+
+        Return:
+            return a resnet layer
+        """
+
+        # we have num_block blocks per layer, the first block
+        # could be 1 or 2, other blocks would always be 1
+        strides = [stride] + [1] * (num_blocks - 1)
+        layers = []
+        for stride in strides:
+            layers.append(block(self.in_channels, out_channels, stride))
+            self.in_channels = out_channels * block.expansion
+
+        return nn.Sequential(*layers)
+
+    def forward(self, x, flow):
+        output = self.conv1(x)  # channel: 3 -> 64
+        output = self.conv2_x(output)
+        flow = F.interpolate(flow, scale_factor=0.5, mode="bilinear", align_corners=False, recompute_scale_factor=False) * 0.5
+        f1 = warp(output, flow)
+        output = self.conv3_x(output)
+        flow = F.interpolate(flow, scale_factor=0.5, mode="bilinear", align_corners=False, recompute_scale_factor=False) * 0.5
+        f2 = warp(output, flow)
+        output = self.conv4_x(output)
+        flow = F.interpolate(flow, scale_factor=0.5, mode="bilinear", align_corners=False, recompute_scale_factor=False) * 0.5
+        output = output + self.tws1.forward_features(output)
+        f3 = warp(output, flow)
+        output = self.conv5_x(output)
+        output = output + self.tws2.forward_features(output)
+        flow = F.interpolate(flow, scale_factor=0.5, mode="bilinear", align_corners=False, recompute_scale_factor=False) * 0.5
+        f4 = warp(output, flow)
+
+        return [f1, f2, f3, f4]
+
+def resnet50_feature_tws():
+    """ return a ResNet 50 object
+    """
+    return ResNet_twins(BottleNeck, [3, 4, 6, 3])
+
