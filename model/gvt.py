@@ -154,7 +154,7 @@ class SBlock(TimmBlock):
 class GroupBlock(TimmBlock):
     def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop=0., attn_drop=0.,
                  drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, sr_ratio=1, ws=1):
-        super(GroupBlock, self).__init__(dim, num_heads, mlp_ratio, qkv_bias, qk_scale, drop, attn_drop,
+        super(GroupBlock, self).__init__(dim, num_heads, mlp_ratio, qkv_bias, drop, attn_drop,
                                          drop_path, act_layer, norm_layer)
         del self.attn
         if ws == 1:
@@ -473,10 +473,10 @@ def alt_gvt_small(pretrained=False, **kwargs):
     return model
 
 
-def alt_gvt_small_v2(pretrained=False, embed_dims=[64, 128, 256, 256], **kwargs):
+def alt_gvt_small_v2(pretrained=False, in_chans=64, **kwargs):
     model = ALTGVT(
-        patch_size=4, embed_dims=embed_dims, num_heads=[2, 4, 8, 4], mlp_ratios=[4, 4, 4, 4], qkv_bias=True,
-        norm_layer=partial(nn.LayerNorm, eps=1e-6), depths=[2, 2, 4, 2], wss=[7, 7, 7, 7], sr_ratios=[8, 4, 2, 1],
+        patch_size=1, in_chans=in_chans, embed_dims=[64, 128, 256, 256], num_heads=[2, 4, 4, 4], mlp_ratios=[2, 2, 1, 1],
+        qkv_bias=True, norm_layer=partial(nn.LayerNorm, eps=1e-6), depths=[2, 2, 4, 2], wss=[7, 1, 1, 1], sr_ratios=[1, 1, 1, 1],
         **kwargs)
     model.default_cfg = _cfg()
     return model
