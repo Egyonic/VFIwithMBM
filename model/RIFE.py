@@ -23,6 +23,8 @@ class Model:
             self.flownet = IFNet_bf()
         elif model_name == 'IFNet_bf_resnet_cbam':
             self.flownet = IFNet_bf_resnet_cbam()
+        elif model_name == 'IFNet_bf_resnet':
+            self.flownet = IFNet_bf_resnet()
         else:
             self.flownet = IFNet()
         self.device()
