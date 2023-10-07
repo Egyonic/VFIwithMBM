@@ -52,7 +52,7 @@ model.eval()
 model.device()
 
 save_result = True
-save_original = False
+save_original = True
 save_path = 'inference_result'  # 保存预测结果
 timestruct = time.localtime(time.time())
 t_s = time.strftime('%Y-%m-%d_%H_%M_%S', timestruct)
@@ -89,13 +89,17 @@ for d in dirs:
         cv2.imwrite(os.path.join(result_dir, f'im_{count}_raw_tg_I1.png'), I1)
         cv2.imwrite(os.path.join(result_dir, f'im_{count}_raw_I2.png'), I2)
 
-    # original_h, original_w, _ = I0.shape  # 记录原始尺寸
+    original_h, original_w, _ = I0.shape  # 记录原始尺寸
     # 通过resize将图像大小调整为适合Transformer的输入大小
-    # I0_resize = resize_to_multiple_of_112(I0)
-    # I1_resize = resize_to_multiple_of_112(I1)
-    # I2_resize = resize_to_multiple_of_112(I2)
-    I0_resize, I1_resize, I2_resize = center_crop(I0, I1, I2, 448, 896)
+    I0_resize = resize_to_multiple_of_112(I0)
+    I1_resize = resize_to_multiple_of_112(I1)
+    I2_resize = resize_to_multiple_of_112(I2)
 
+    # I0_resize = (torch.tensor(I0_resize.transpose(2, 0, 1) / 255.)).to(device).float().unsqueeze(0)
+    # I1_resize = (torch.tensor(I1_resize.transpose(2, 0, 1) / 255.)).to(device).float().unsqueeze(0)
+    # I2_resize = (torch.tensor(I2_resize.transpose(2, 0, 1) / 255.)).to(device).float().unsqueeze(0)
+
+    # I0, I1, I2 = center_crop(I0, I1, I2, 448, 896)
     # img0, gt, img1 = center_crop(img0, gt, img1, 224, 448)
     if save_result and count % save_interval == 0:
         cv2.imwrite(os.path.join(result_dir, f'im_{count}_resize_I0.png'), I0_resize)
@@ -106,36 +110,36 @@ for d in dirs:
     I2_resize = (torch.tensor(I2_resize.transpose(2, 0, 1)).to(device) / 255.).unsqueeze(0)
     mid = model.inference(I0_resize, I2_resize)[0]
     # 将 mid 的尺寸转换回原始的输入尺寸
-    # mid_resize = resize(mid, (original_h, original_w))
+    mid_resize = resize(mid, (original_h, original_w))
 
     ssim = ssim_matlab(torch.tensor(I1_resize.transpose(2, 0, 1)).to(device).unsqueeze(0) / 255.,
                        torch.round(mid * 255).unsqueeze(0) / 255.).detach().cpu().numpy()
-    # ssim_re = ssim_matlab(torch.tensor(I1.transpose(2, 0, 1)).to(device).unsqueeze(0) / 255.,
-    #                       torch.round(mid_resize * 255).unsqueeze(0) / 255.).detach().cpu().numpy()
+    ssim_re = ssim_matlab(torch.tensor(I1.transpose(2, 0, 1)).to(device).unsqueeze(0) / 255.,
+                          torch.round(mid_resize * 255).unsqueeze(0) / 255.).detach().cpu().numpy()
     # 计算LPIPS相似性分数
     lpips_score = lpips_net((torch.tensor(I1_resize.transpose(2, 0, 1)).to(device) / 255.).unsqueeze(0), mid)
-    # lpips_score2 = lpips_net((torch.tensor(I1.transpose(2, 0, 1)).to(device) / 255.).unsqueeze(0), mid_resize)
+    lpips_score2 = lpips_net((torch.tensor(I1.transpose(2, 0, 1)).to(device) / 255.).unsqueeze(0), mid_resize)
     lpips_list.append(lpips_score.item())  # 将分数添加到列表中
-    # lpips_ori_list.append(lpips_score2.item())  # 将分数添加到列表中
+    lpips_ori_list.append(lpips_score2.item())  # 将分数添加到列表中
 
     out = mid.detach().cpu().numpy().transpose(1, 2, 0)
     if count % save_interval == 0 and save_result:
         mid_tmp = np.round((mid * 255).detach().cpu().numpy()).astype('uint8').transpose(1, 2, 0)
         cv2.imwrite(os.path.join(result_dir, f'im_{count}_resize_I1_predict.png'), mid_tmp)  # 保存预测图
 
-        # mid_resize_tmp = np.round((mid * 255).detach().cpu().numpy()).astype('uint8').transpose(1, 2, 0)
-        # cv2.imwrite(os.path.join(result_dir, f'im_{count}_raw_I1_predict.png'), mid_resize_tmp)
+        mid_resize_tmp = np.round((mid * 255).detach().cpu().numpy()).astype('uint8').transpose(1, 2, 0)
+        cv2.imwrite(os.path.join(result_dir, f'im_{count}_raw_I1_predict.png'), mid_resize_tmp)
     mid = np.round((mid * 255).detach().cpu().numpy()).astype('uint8').transpose(1, 2, 0) / 255.
-    # mid_resize = np.round((mid_resize * 255).detach().cpu().numpy()).astype('uint8').transpose(1, 2, 0) / 255.
+    mid_resize = np.round((mid_resize * 255).detach().cpu().numpy()).astype('uint8').transpose(1, 2, 0) / 255.
     I1_resize = I1_resize / 255.
     I1 = I1 / 255.
     psnr = -10 * math.log10(((I1_resize - mid) * (I1_resize - mid)).mean())
-    # psnr2 = -10 * math.log10(((I1 - mid_resize) * (I1 - mid_resize)).mean())
+    psnr2 = -10 * math.log10(((I1 - mid_resize) * (I1 - mid_resize)).mean())
 
     psnr_list.append(psnr)
     ssim_list.append(ssim)
-    # psnr_ori_list.append(psnr2)
-    # ssim_ori_list.append(ssim_re)
+    psnr_ori_list.append(psnr2)
+    ssim_ori_list.append(ssim_re)
     print("同尺寸 Avg PSNR: {} SSIM: {}".format(np.mean(psnr_list), np.mean(ssim_list)))
     print("转换尺寸 Avg PSNR: {} SSIM: {}".format(np.mean(psnr_ori_list), np.mean(ssim_ori_list)))
     count = count + 1
@@ -143,6 +147,6 @@ for d in dirs:
 print('预测结果尺寸不变')
 print("平均 PSNR: {} SSIM: {}".format(np.mean(psnr_list), np.mean(ssim_list)))
 print(f'验证集平均LPIPS相似性分数为: {np.mean(lpips_list)}')
-# print('\n resize预测结果回原尺寸')
-# print("平均 PSNR: {} SSIM: {}".format(np.mean(psnr_ori_list), np.mean(ssim_ori_list)))
-# print(f'验证集平均LPIPS相似性分数为: {np.mean(lpips_ori_list)}')
+print('\n resize预测结果回原尺寸')
+print("平均 PSNR: {} SSIM: {}".format(np.mean(psnr_ori_list), np.mean(ssim_ori_list)))
+print(f'验证集平均LPIPS相似性分数为: {np.mean(lpips_ori_list)}')

@@ -25,6 +25,8 @@ class Model:
             self.flownet = IFNet_bf_resnet_cbam()
         elif model_name == 'IFNet_bf_resnet':
             self.flownet = IFNet_bf_resnet()
+        elif model_name == 'IFNet_bf_resnet_tws':
+            self.flownet = IFNet_bf_resnet_tws()
         else:
             self.flownet = IFNet()
         self.device()
@@ -53,8 +55,8 @@ class Model:
             }
             
         if rank <= 0:
-            #self.flownet.load_state_dict(torch.load('{}/flownet.pkl'.format(path)))
-            self.flownet.load_state_dict(convert(torch.load('{}/flownet.pkl'.format(path))))
+            self.flownet.load_state_dict(torch.load('{}/flownet.pkl'.format(path)))
+            #self.flownet.load_state_dict(convert(torch.load('{}/flownet.pkl'.format(path))))
         
     def save_model(self, path, epoch, rank=0):
         if rank == 0:

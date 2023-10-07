@@ -31,8 +31,8 @@ def center_crop(img0, gt, img1, h, w):
     return img0, gt, img1
 
 
-save_result = True
-path = '/home/usst/egy/data/vimeo90k/'
+save_result = False
+path = '/home/usst/egyonic/data/vimeo_triplet/'
 f = open(path + 'tri_testlist.txt', 'r')
 save_path = 'inference_result'  # 保存预测结果
 timestruct = time.localtime(time.time())

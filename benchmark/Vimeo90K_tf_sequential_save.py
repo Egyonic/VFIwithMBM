@@ -44,7 +44,7 @@ def resize_to_multiple_of_112(img, multiple=112):
 
 
 save_result = True
-save_original = False
+save_original = True
 path = '/home/usst/egy/data/vimeo90k/'
 f = open(path + 'tri_testlist.txt', 'r')
 save_path = 'inference_result'  # 保存预测结果
@@ -55,8 +55,8 @@ if save_result:
     os.mkdir(result_dir)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = Model(model_name='IFNet_bf_resnet')
-model.load_model('train_log/bf_4b_resnte_bi_rrrb')
+model = Model(model_name='IFNet_bf_resnet_cbam')
+model.load_model('train_log/IFNet_bf_cbam_res')
 model.eval()
 model.device()
 psnr_list = []
@@ -70,7 +70,7 @@ lpips_ori_list = []
 lpips_net = LPIPS(net='vgg').to('cuda')  # 使用GPU加速
 
 count = 0
-save_interval = 50
+save_interval = 100
 
 for i in f:
     name = str(i).strip()
@@ -141,3 +141,4 @@ print(f'验证集平均LPIPS相似性分数为: {np.mean(lpips_list)}')
 print('\n resize预测结果回原尺寸')
 print("平均 PSNR: {} SSIM: {}".format(np.mean(psnr_ori_list), np.mean(ssim_ori_list)))
 print(f'验证集平均LPIPS相似性分数为: {np.mean(lpips_ori_list)}')
+

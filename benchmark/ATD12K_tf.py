@@ -37,7 +37,7 @@ model.load_model('train_log/bf_4b_resnet')
 model.eval()
 model.device()
 
-save_result = True
+save_result = False
 save_path = 'inference_result'  # 保存预测结果
 timestruct = time.localtime(time.time())
 t_s = time.strftime('%Y-%m-%d_%H_%M_%S', timestruct)
@@ -47,7 +47,7 @@ if save_result:
 count = 0
 save_interval = 20
 
-path = '/home/usst/egy/data/atd12k/test_2k_540p/'
+path = '/home/usst/egyonic/data/atd12/datasets/test_2k_540p/'
 dirs = os.listdir(path)
 psnr_list = []
 ssim_list = []
