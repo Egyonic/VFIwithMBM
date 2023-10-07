@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from model.warplayer import warp
 from model.refine import *
 from model.biformer_models.biformer import Block as BiformerBlock
-from model.resnet import resnet50_feature, resnet50_feature_tws
+from model.resnet import resnet50_feature, resnet50_feature_tws, ResNet_feature_bi, get_ResNet_feature_bi
 
 
 def deconv(in_planes, out_planes, kernel_size=4, stride=2, padding=1):
@@ -422,7 +422,7 @@ class IFNet_bf_resnet_tws(nn.Module):
         self.block_tea = IFBlock_bf(16 + 4, c=90, tf_dim=128)
         # self.contextnet = Contextnet()
         # 使用 resnet结构提取特征
-        self.contextnet = resnet50_feature_tws()
+        self.contextnet = get_ResNet_feature_bi()
         self.unet = Unet()
 
     def forward(self, x, scale=[4, 2, 1], timestep=0.5):
