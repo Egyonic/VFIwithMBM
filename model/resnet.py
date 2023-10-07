@@ -330,14 +330,14 @@ class BottleNeck_Biformer(nn.Module):
             BiformerBlock(dim=in_channels, n_win=7, num_heads=4, kv_downsample_mode='identity', kv_per_win=-1, topk=4,
                           mlp_ratio=3, side_dwconv=5, before_attn_dwconv=3, layer_scale_init_value=-1, qk_dim=32,
                           param_routing=False, diff_routing=False, soft_routing=False, pre_norm=True),
-            nn.BatchNorm2d(out_channels),
+            nn.BatchNorm2d(in_channels),
             nn.ReLU(inplace=True),
             BiformerBlock(dim=in_channels, n_win=7, num_heads=4, kv_downsample_mode='identity', kv_per_win=-1, topk=4,
                           mlp_ratio=3, side_dwconv=5, before_attn_dwconv=3, layer_scale_init_value=-1, qk_dim=32,
                           param_routing=False, diff_routing=False, soft_routing=False, pre_norm=True),
-            nn.BatchNorm2d(out_channels),
+            nn.BatchNorm2d(in_channels),
             nn.ReLU(inplace=True),
-            nn.Conv2d(out_channels, out_channels * BottleNeck.expansion, kernel_size=1, bias=False),
+            nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False),
             nn.BatchNorm2d(out_channels * BottleNeck.expansion),
         )
 
@@ -350,12 +350,13 @@ class BottleNeck_Biformer(nn.Module):
             )
 
     def forward(self, x):
+        relu1 = nn.ReLU(inplace=True)
         return nn.ReLU(inplace=True)(self.residual_function(x) + self.shortcut(x))
 
 
 class ResNet_feature_bi(nn.Module):
 
-    def __init__(self, block1, num_block, block2):
+    def __init__(self, block1, num_block, block2=BottleNeck_Biformer):
         super().__init__()
 
         self.in_channels = 64
@@ -366,8 +367,8 @@ class ResNet_feature_bi(nn.Module):
             nn.ReLU(inplace=True))
         self.conv2_x = self._make_layer(block1, 16, num_block[0], 2)
         self.conv3_x = self._make_layer(block1, 32, num_block[1], 2)
-        self.conv4_x = self._make_layer(block2, 64, num_block[2], 2)
-        self.conv5_x = self._make_layer(block2, 128, num_block[3], 2)
+        self.conv4_x = self._make_layer(block2, 64, num_block[2], 1)
+        self.conv5_x = self._make_layer(block2, 128, num_block[3], 1)
 
     def _make_layer(self, block, out_channels, num_blocks, stride):
         """make resnet layers(by layer i didnt mean this 'layer' was the
@@ -415,6 +416,9 @@ class ResNet_feature_bi(nn.Module):
 
         return [f1, f2, f3, f4]
 
+def get_ResNet_feature_bi():
+    return ResNet_feature_bi(BottleNeck, [3, 4, 6, 3], BottleNeck_Biformer)
+
 
 if __name__ == "__main__":
     print('test')
@@ -425,3 +429,4 @@ if __name__ == "__main__":
     flow = torch.from_numpy(flow)
     res = model(t, flow)
     print(t)
+
