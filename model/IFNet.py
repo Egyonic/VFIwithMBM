@@ -480,17 +480,19 @@ class IFNet_bf_resnet_tws(nn.Module):
         merged[2] = torch.clamp(merged[2] + res, 0, 1)
         return flow_list, mask_list[2], merged, flow_teacher, merged_teacher, loss_distill
 
-class IFNet_bf_resnet(nn.Module):
+
+class IFNet_bf_cbam_resnet_bi(nn.Module):
+    """使用IFNet + BiFormer + CBAM + Resnet with BiFormer"""
     def __init__(self):
-        super(IFNet_bf_resnet, self).__init__()
+        super(IFNet_bf_cbam_resnet_bi, self).__init__()
         self.block0 = IFBlock_bf(6, c=240, tf_dim=64)
         self.block1 = IFBlock_bf(13 + 4, c=150, tf_dim=64)
         self.block2 = IFBlock_bf(13 + 4, c=90, tf_dim=128)
         self.block_tea = IFBlock_bf(16 + 4, c=90, tf_dim=128)
         # self.contextnet = Contextnet()
         # 使用 resnet结构提取特征
-        self.contextnet = resnet50_feature()
-        self.unet = Unet()
+        self.contextnet = get_ResNet_feature_bi()
+        self.unet = UnetCBAM()
 
     def forward(self, x, scale=[4, 2, 1], timestep=0.5):
         img0 = x[:, :3]
@@ -546,4 +548,3 @@ class IFNet_bf_resnet(nn.Module):
         res = tmp[:, :3] * 2 - 1
         merged[2] = torch.clamp(merged[2] + res, 0, 1)
         return flow_list, mask_list[2], merged, flow_teacher, merged_teacher, loss_distill
-
