@@ -42,15 +42,15 @@ if save_result:
     os.mkdir(result_dir)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = Model(model_name='IFNet_bf')
-model.load_model('train_log/IFNet_bf')
+model = Model(model_name='IFNet_bf_resnet_twis')
+model.load_model('train_log/bf_4b_resnte_bi_rrrb')
 model.eval()
 model.device()
 psnr_list = []
 ssim_list = []
 
 count = 0
-save_interval = 200
+save_interval = 50
 
 for i in f:
     name = str(i).strip()
@@ -64,7 +64,7 @@ for i in f:
     # I0, I1, I2 = center_crop(I0, I1, I2, 224, 336)
     if count % save_interval == 0 and save_result:
         cv2.imwrite(os.path.join(result_dir, f'im_{count}_I0.png'), I0)
-        cv2.imwrite(os.path.join(result_dir, f'im_{count}_I1.png'), I1)
+        cv2.imwrite(os.path.join(result_dir, f'im_{count}_I1_target.png'), I1)
         cv2.imwrite(os.path.join(result_dir, f'im_{count}_I2.png'), I2)
 
     I0 = (torch.tensor(I0.transpose(2, 0, 1)).to(device) / 255.).unsqueeze(0)
@@ -74,7 +74,7 @@ for i in f:
     # mid = np.round((mid * 255).detach().cpu().numpy()).astype('uint8').transpose(1, 2, 0) / 255.
     if count % save_interval == 0 and save_result:
         mid_tmp = np.round((mid * 255).detach().cpu().numpy()).astype('uint8').transpose(1, 2, 0)
-        cv2.imwrite(os.path.join(result_dir, f'im_{count}_predict.png'), mid_tmp)
+        cv2.imwrite(os.path.join(result_dir, f'im_{count}_I1_predict.png'), mid_tmp)
     mid = np.round((mid * 255).detach().cpu().numpy()).astype('uint8').transpose(1, 2, 0) / 255.
     I1 = I1 / 255.
     psnr = -10 * math.log10(((I1 - mid) * (I1 - mid)).mean())

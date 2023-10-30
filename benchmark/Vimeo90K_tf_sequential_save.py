@@ -141,3 +141,4 @@ print(f'验证集平均LPIPS相似性分数为: {np.mean(lpips_list)}')
 print('\n resize预测结果回原尺寸')
 print("平均 PSNR: {} SSIM: {}".format(np.mean(psnr_ori_list), np.mean(ssim_ori_list)))
 print(f'验证集平均LPIPS相似性分数为: {np.mean(lpips_ori_list)}')
+

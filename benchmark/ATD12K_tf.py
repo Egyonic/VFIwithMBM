@@ -32,8 +32,8 @@ def center_crop(img0, gt, img1, h, w):
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-model = Model(model_name='IFNet_bf')
-model.load_model('train_log/IFNet_bf')
+model = Model(model_name='IFNet_bf_resnet')
+model.load_model('train_log/bf_4b_resnet')
 model.eval()
 model.device()
 
@@ -45,7 +45,7 @@ result_dir = os.path.join(save_path, 'ATD12k', t_s)
 if save_result:
     os.mkdir(result_dir)
 count = 0
-save_interval = 100
+save_interval = 20
 
 path = '/home/usst/egyonic/data/atd12/datasets/test_2k_540p/'
 dirs = os.listdir(path)
