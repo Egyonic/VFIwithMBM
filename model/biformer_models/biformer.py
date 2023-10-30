@@ -497,16 +497,17 @@ class MultiScaleFeatureExtractor(nn.Module):
                           pre_norm=True))
             self.layers.append(nn.Sequential(*scale_layers))
             self.ch_trans.append(nn.Sequential(
-                nn.Conv2d(in_dim if stage == 0 else in_dim//2, out_channels[stage], kernel_size=3, padding=1, bias=False),
+                nn.Conv2d(in_dim if stage == 0 else in_dim//2, out_channels[stage], stride=2, kernel_size=3, padding=1, bias=False),
                 nn.BatchNorm2d(out_channels[stage]),
                 nn.ReLU(inplace=True)))
 
     def forward(self, x, flow):
         features = []
         for scale in range(self.num_scales):
-            print(scale)
             x = self.ch_trans[scale](x)
             x = self.layers[scale](x)
+            flow = F.interpolate(flow, scale_factor=0.5, mode="bilinear", align_corners=False,
+                                 recompute_scale_factor=False) * 0.5
             f = warp(x, flow)
             features.append(f)
         return features
@@ -515,6 +516,6 @@ class MultiScaleFeatureExtractor(nn.Module):
 def get_4_scale_multi_feature_extractor():
     model = MultiScaleFeatureExtractor(in_channels=3, out_channels=[16, 32, 64, 128], num_scales=4,
                                        num_blocks=[2, 2, 4, 2],
-                                       n_wins=[56, 28, 14, 7], topks=[7, 4, 2, 1])
+                                       n_wins=[28, 14, 7, 7], topks=[7, 4, 2, 1])
 
     return model
