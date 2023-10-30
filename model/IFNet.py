@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from model.warplayer import warp
 from model.refine import *
 from model.biformer_models.biformer import Block as BiformerBlock
+from model.biformer_models.biformer import get_4_scale_multi_feature_extractor
 from model.resnet import resnet50_feature, resnet50_feature_tws, ResNet_feature_bi, get_ResNet_feature_bi
 
 
@@ -544,6 +545,69 @@ class IFNet_bf_cbam_resnet_bi(nn.Module):
         c0 = self.contextnet(img0, flow[:, :2])
         c1 = self.contextnet(img1, flow[:, 2:4])
         # 融合多个信息
+        tmp = self.unet(img0, img1, warped_img0, warped_img1, mask, flow, c0, c1)
+        res = tmp[:, :3] * 2 - 1
+        merged[2] = torch.clamp(merged[2] + res, 0, 1)
+        return flow_list, mask_list[2], merged, flow_teacher, merged_teacher, loss_distill
+
+
+class IFNet_bf_cbam_mulExt(nn.Module):
+    """使用IFNet + BiFormer +多尺度的基于BiFormer的特征提取器"""
+    def __init__(self):
+        super(IFNet_bf_cbam_mulExt, self).__init__()
+        self.block0 = IFBlock_bf(6, c=240, tf_dim=64)
+        self.block1 = IFBlock_bf(13 + 4, c=150, tf_dim=64)
+        self.block2 = IFBlock_bf(13 + 4, c=90, tf_dim=128)
+        self.block_tea = IFBlock_bf(16 + 4, c=90, tf_dim=128)
+        self.contextnet = get_4_scale_multi_feature_extractor()
+        self.unet = UnetCBAM()
+
+    def forward(self, x, scale=[4, 2, 1], timestep=0.5):
+        img0 = x[:, :3]
+        img1 = x[:, 3:6]
+        gt = x[:, 6:]  # In inference time, gt is None
+        flow_list = []
+        merged = []
+        mask_list = []
+        warped_img0 = img0
+        warped_img1 = img1
+        flow = None
+        loss_distill = 0
+        # 学生网络
+        stu = [self.block0, self.block1, self.block2]
+        for i in range(3):
+            if flow != None:
+                flow_d, mask_d = stu[i](torch.cat((img0, img1, warped_img0, warped_img1, mask), 1), flow,
+                                        scale=scale[i])
+                flow = flow + flow_d
+                mask = mask + mask_d
+            else:
+                flow, mask = stu[i](torch.cat((img0, img1), 1), None, scale=scale[i])
+            mask_list.append(torch.sigmoid(mask))
+            flow_list.append(flow)
+            warped_img0 = warp(img0, flow[:, :2])
+            warped_img1 = warp(img1, flow[:, 2:4])
+            merged_student = (warped_img0, warped_img1)
+            merged.append(merged_student)
+        if gt.shape[1] == 3:
+            flow_d, mask_d = self.block_tea(torch.cat((img0, img1, warped_img0, warped_img1, mask, gt), 1), flow,
+                                            scale=1)
+            flow_teacher = flow + flow_d
+            warped_img0_teacher = warp(img0, flow_teacher[:, :2])
+            warped_img1_teacher = warp(img1, flow_teacher[:, 2:4])
+            mask_teacher = torch.sigmoid(mask + mask_d)
+            merged_teacher = warped_img0_teacher * mask_teacher + warped_img1_teacher * (1 - mask_teacher)
+        else:
+            flow_teacher = None
+            merged_teacher = None
+        for i in range(3):
+            merged[i] = merged[i][0] * mask_list[i] + merged[i][1] * (1 - mask_list[i])
+            if gt.shape[1] == 3:
+                loss_mask = ((merged[i] - gt).abs().mean(1, True) > (merged_teacher - gt).abs().mean(1,
+                                                                                                     True) + 0.01).float().detach()
+                loss_distill += (((flow_teacher.detach() - flow_list[i]) ** 2).mean(1, True) ** 0.5 * loss_mask).mean()
+        c0 = self.contextnet(img0, flow[:, :2])
+        c1 = self.contextnet(img1, flow[:, 2:4])
         tmp = self.unet(img0, img1, warped_img0, warped_img1, mask, flow, c0, c1)
         res = tmp[:, :3] * 2 - 1
         merged[2] = torch.clamp(merged[2] + res, 0, 1)

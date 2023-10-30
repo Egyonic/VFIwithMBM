@@ -34,6 +34,8 @@ from timm.models.layers import LayerNorm2d
 # from positional_encodings import PositionalEncodingPermute2D, Summer
 # from siren_pytorch import SirenNet
 
+from model.warplayer import warp
+
 
 def get_pe_layer(emb_dim, pe_dim=None, name='none'):
     if name == 'none':
@@ -499,13 +501,14 @@ class MultiScaleFeatureExtractor(nn.Module):
                 nn.BatchNorm2d(out_channels[stage]),
                 nn.ReLU(inplace=True)))
 
-    def forward(self, x):
+    def forward(self, x, flow):
         features = []
         for scale in range(self.num_scales):
             print(scale)
             x = self.ch_trans[scale](x)
             x = self.layers[scale](x)
-            features.append(x)
+            f = warp(x, flow)
+            features.append(f)
         return features
 
 
