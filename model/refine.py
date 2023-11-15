@@ -3,6 +3,8 @@ import torch.nn as nn
 import numpy as np
 import torch.optim as optim
 import itertools
+
+from model.lomar.models_lomar import MaskedAutoencoderViT, mae_vit_base_patch16
 from model.warplayer import warp
 import torch.nn.functional as F
 
@@ -166,3 +168,22 @@ class UnetCBAM(nn.Module):
         x = self.up3(torch.cat((x, s0), 1))
         x = self.conv(x)
         return torch.sigmoid(x)
+
+
+class UNetMAEViT(nn.Module):
+    def __init__(self):
+        super(UNetMAEViT, self).__init__()
+        self.unet_cbam = UnetCBAM()
+        self.mae_vit = mae_vit_base_patch16()
+
+    def forward(self, img0, img1, warped_img0, warped_img1, mask, flow, c0, c1):
+        # U-Net 阶段
+        unet_output = self.unet_cbam(img0, img1, warped_img0, warped_img1, mask, flow, c0, c1)
+
+        # MAE ViT 阶段
+        mae_vit_loss, mae_vit_output, mask_indices = self.mae_vit(unet_output)
+
+        # 可以根据需要返回 U-Net 输出、MAE ViT 输出等
+        mae_img_pred = self.mae_vit.unpatchify(mae_vit_output)
+
+        return unet_output, mae_img_pred, mae_vit_output, mae_vit_loss, mask_indices
