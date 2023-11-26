@@ -135,7 +135,7 @@ class Attention(nn.Module):
         attn = (q @ k.transpose(-2, -1)) * self.scale
 
         if self.rpe_k is not None:
-            attn += self.rpe_k(q)
+                attn += self.rpe_k(q)
 
         # image relative position on queries
         if self.rpe_q is not None:

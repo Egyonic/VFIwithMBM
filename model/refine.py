@@ -3,8 +3,10 @@ import torch.nn as nn
 import numpy as np
 import torch.optim as optim
 import itertools
+from PIL import Image
+import matplotlib.pyplot as plt
 
-from model.lomar.models_lomar import MaskedAutoencoderViT, mae_vit_base_patch16
+from model.lomar.models_lomar_with_decoder import MaskedAutoencoderViT, mae_vit_base_patch16
 from model.warplayer import warp
 import torch.nn.functional as F
 
@@ -185,5 +187,64 @@ class UNetMAEViT(nn.Module):
 
         # 可以根据需要返回 U-Net 输出、MAE ViT 输出等
         mae_img_pred = self.mae_vit.unpatchify(mae_vit_output)
+        img_un1 = torch.cat([mae_img_pred[0], mae_img_pred[1]], dim=2)
+        img_un2 = torch.cat([mae_img_pred[2], mae_img_pred[3]], dim=2)
+        img_un = torch.cat([img_un1, img_un1], dim=1)
 
         return unet_output, mae_img_pred, mae_vit_output, mae_vit_loss, mask_indices
+
+
+def show_image(image, title=''):
+    # image is [H, W, 3]
+    assert image.shape[2] == 3
+    plt.imshow(torch.clip(image * 255, 0, 255).int())
+    plt.title(title, fontsize=16)
+    plt.axis('off')
+    return
+
+if __name__ == "__main__":
+    """ 测试lomar 模型的图像输入和重建 """
+    # 准备模型和图像数据
+    chkpt_dir = '../lomar_base.pth'
+    model = mae_vit_base_patch16()
+    # checkpoint = torch.load(chkpt_dir, map_location='cpu')
+    # msg = model.load_state_dict(checkpoint['model'], strict=False)
+    # print(msg)
+
+    img = Image.open('../demo/im_1350_I1_predict.png')
+    img = img.resize((224, 224))
+    img = np.array(img) / 255.
+    img = img.astype('float32')
+    img2 = Image.open('../demo/im_0_I1_predict.png').resize((224, 224))
+    img2 = np.array(img2) / 255.
+    img2 = img2.astype('float32')
+    x = torch.tensor(img)
+    x = x.unsqueeze(dim=0)
+    x2 = torch.tensor(img2)
+    x2 = x2.unsqueeze(dim=0)
+
+    x = torch.cat([x, x2], dim=0)
+    x = torch.einsum('nhwc->nchw', x)
+
+    # input = torch.rand(1, 9, 224, 224)
+    loss, pred, mask_indices = model(x)
+    # pred = pred.reshape(1, 196, 768)
+    # tmp = pred[0].unsqueeze(0)
+    # tmp = model.unpatchify(tmp)
+
+    mae_img_pred = pred.reshape(-1, 196, 768)
+    mae_img_pred = model.unpatchify(pred)
+
+
+    plt.subplot(1, 2, 1)
+    show_image(x.permute(0, 2, 3, 1)[0], "original")
+
+    plt.subplot(1, 2, 2)
+    show_image(mae_img_pred.permute(0, 2, 3, 1)[0], "reconstruction")
+    # show_image(mae_img_pred[0].permute(1, 2, 0), "reconstruction")
+
+    print('ok')
+
+
+
+
