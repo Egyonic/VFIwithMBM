@@ -58,7 +58,7 @@ class MaskedAutoencoderViT(nn.Module):
 
         self.mask_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
 
-        self.decoder_pos_embed = nn.Parameter(torch.zeros(1, num_patches, decoder_embed_dim),
+        self.decoder_pos_embed = nn.Parameter(torch.zeros(1, 49, decoder_embed_dim),
                                               requires_grad=False)  # fixed sin-cos embedding
 
         self.decoder_blocks = nn.ModuleList([
@@ -317,8 +317,8 @@ class MaskedAutoencoderViT(nn.Module):
 
     def forward(self, imgs, window_size=7, num_window=4, mask_ratio=0.8):
         latent, mask_indices, ids_restore = self.forward_encoder(imgs, window_size, num_window, mask_ratio)
-        pred = latent.reshape(imgs.shape[0], self.patch_embed.num_patches, self.encoder_pred.out_features)
-        pred_dec = self.forward_decoder(pred, ids_restore)  # [N, L, p*p*3]
+        # pred = latent.reshape(imgs.shape[0], self.patch_embed.num_patches, self.encoder_pred.out_features)
+        pred_dec = self.forward_decoder(latent, ids_restore)  # [N, L, p*p*3]
         loss = self.forward_loss(imgs, pred_dec, mask_indices, num_window, ids_restore)
         return loss, pred_dec, mask_indices
 
