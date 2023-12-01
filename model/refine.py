@@ -202,11 +202,55 @@ class UNetMAEViT(nn.Module):
 
         # 解码阶段
         decode_out = self.decoder.forward_features(mae_vit_output)
-        mae_img_pred = self.mae_vit.unpatchify(decode_out)
+        mae_img_pred = self.mae_vit.unpatchify(decode_out)  # 解码出完整图片
+        mae_img_pred = torch.sigmoid(mae_img_pred)  # 变正数符合像素要求
 
         # 可以根据需要返回 U-Net 输出、MAE ViT 输出等
-        return unet_output, mae_img_pred, mae_vit_output, mae_vit_loss, mask_indices
+        return unet_output, mae_img_pred, mae_vit_output, mae_vit_loss, mask_indices_encoder
 
+
+def get_rec_region(tensor, low, high):
+    # 创建一个和输入张量相同大小的零张量
+    rec_region = torch.zeros_like(tensor)
+
+    # 使用逻辑运算设置满足条件的像素点为1，表示需要重建的区域，其他部分为0
+    rec_region[(tensor < low) | (tensor > high)] = 1
+
+    return rec_region
+
+
+def get_rec_patches(pred_im, mask):
+    pass
+
+
+class LocalMae(nn.Module):
+    def __init__(self):
+        super(LocalMae, self).__init__()
+        self.mae_vit = mae_vit_base_patch16()
+        self.decoder = vit_base_patch16_decoder()
+        self.mask_min = 0.2
+        self.mask_max = 0.8
+
+    def forward(self, imgs, mask):
+
+        # 预处理阶段，根据mask确定重建的范围
+
+        # 获得需要重建的图片快，记录相应的位置
+
+        # MAE ViT 编码阶段
+        mae_vit_loss, mae_vit_output, mask_indices_encoder = self.mae_vit(imgs)
+
+        # 解码阶段
+        decode_out = self.decoder.forward_features(mae_vit_output)
+        mae_img_pred = self.mae_vit.unpatchify(decode_out)  # 解码出完整图片
+        mae_img_pred = torch.sigmoid(mae_img_pred)  # 变正数符合像素要求
+
+        # 可以根据需要返回 U-Net 输出、MAE ViT 输出等
+        return mae_img_pred
+
+
+def get_local_mae():
+    return LocalMae()
 
 def show_image(image, title=''):
     # image is [H, W, 3]

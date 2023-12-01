@@ -629,7 +629,8 @@ class IFNet_bf_resnet_maeVit(nn.Module):
         self.block_tea = IFBlock_bf(16 + 4, c=90, tf_dim=128)
 
         self.contextnet = resnet50_feature()
-        self.unet = UNetMAEViT()
+        self.unet = UnetCBAM()
+        self.mae =get_local_mae()
 
     def forward(self, x, scale=[4, 2, 1], timestep=0.5):
         img0 = x[:, :3]
@@ -680,6 +681,11 @@ class IFNet_bf_resnet_maeVit(nn.Module):
         tmp = self.unet(img0, img1, warped_img0, warped_img1, mask, flow, c0, c1)
         res = tmp[:, :3] * 2 - 1
         merged[2] = torch.clamp(merged[2] + res, 0, 1)
+
+        # 重建阶段
+        fusion_imgs = merged[2]
+        self.mae(fusion_imgs, mask)
+
         return flow_list, mask_list[2], merged, flow_teacher, merged_teacher, loss_distill
 
 
