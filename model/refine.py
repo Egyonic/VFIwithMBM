@@ -219,9 +219,25 @@ def get_rec_region(tensor, low, high):
     return rec_region
 
 
-def get_rec_patches(pred_im, mask):
-    pass
+def get_rec_patches(pred_imgs, mask, window_size=16, threshold=1):
+    """
+    根据 mask 产生图片 patch
+    :param pred_imgs: 需要重建的图片
+    :param mask: 遮挡区域，1表示遮挡
+    :param window_size: 窗口大小
+    :param threshold: 表示一个窗口内最少有多少个需重建的像素点才重建
+    :return: window_mark
+    """
+    B, C, H, W = pred_imgs.shape
+    _, _, mask_H, mask_W = mask.shape
 
+    # 使用平均池化对 mask 进行窗口划分
+    pool = F.avg_pool2d(mask.float(), window_size, stride=window_size, padding=0)
+    # 将窗口内大于等于 threshold 的部分标记为 1
+    window_mark = (pool >= threshold / (window_size**2)).float()
+    patch_marks = F.interpolate(window_mark, scale_factor=window_size, mode='nearest')
+
+    return window_mark, patch_marks
 
 class LocalMae(nn.Module):
     def __init__(self):
