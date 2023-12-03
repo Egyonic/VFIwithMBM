@@ -31,6 +31,8 @@ class Model:
             self.flownet = IFNet_bf_cbam_resnet_bi()
         elif model_name == 'IFNet_bf_cbam_mulExt':
             self.flownet = IFNet_bf_cbam_mulExt()
+        elif model_name == 'IFNet_bf_resnet_local_mae':
+            self.flownet = IFNet_bf_resnet_local_mae()
         else:
             self.flownet = IFNet()
         self.device()
