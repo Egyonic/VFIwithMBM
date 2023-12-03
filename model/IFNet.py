@@ -618,11 +618,11 @@ class IFNet_bf_cbam_mulExt(nn.Module):
         return flow_list, mask_list[2], merged, flow_teacher, merged_teacher, loss_distill
 
 
-class IFNet_bf_resnet_maeVit(nn.Module):
+class IFNet_bf_resnet_local_mae(nn.Module):
     """通过参数来选择不同的组件"""
 
     def __init__(self):
-        super(IFNet_bf_resnet_maeVit, self).__init__()
+        super(IFNet_bf_resnet_local_mae, self).__init__()
         self.block0 = IFBlock_bf(6, c=240, tf_dim=64)
         self.block1 = IFBlock_bf(13 + 4, c=150, tf_dim=64)
         self.block2 = IFBlock_bf(13 + 4, c=90, tf_dim=128)
@@ -699,7 +699,7 @@ class IFNet_bf_resnet_maeVit(nn.Module):
 # test net
 
 if __name__ == "__main__":
-    flownet = IFNet_bf_resnet_maeVit()
+    flownet = IFNet_bf_resnet_local_mae()
     input = torch.rand(1, 9, 224, 224)
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # input_cuda = input.to("cpu")
