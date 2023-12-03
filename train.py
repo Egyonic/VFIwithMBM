@@ -73,6 +73,7 @@ def train(model, local_rank, args):
                 writer.add_scalar('loss/l1', info['loss_l1'], step)
                 writer.add_scalar('loss/tea', info['loss_tea'], step)
                 writer.add_scalar('loss/distill', info['loss_distill'], step)
+                writer.add_scalar('loss/reconstruct', info['loss_reconstruct'], step)
             if step % 1000 == 1 and local_rank == 0:
                 gt = (gt.permute(0, 2, 3, 1).detach().cpu().numpy() * 255).astype('uint8')
                 mask = (torch.cat((info['mask'], info['mask_tea']), 3).permute(0, 2, 3, 1).detach().cpu().numpy() * 255).astype('uint8')
@@ -87,7 +88,7 @@ def train(model, local_rank, args):
                     writer.add_image(str(i) + '/mask', mask[i], step, dataformats='HWC')
                 writer.flush()
             if local_rank == 0:
-                print('epoch:{} {}/{} time:{:.2f}+{:.2f} loss_l1:{:.4e}'.format(epoch, i, args.step_per_epoch, data_time_interval, train_time_interval, info['loss_l1']))
+                print('epoch:{} {}/{} time:{:.2f}+{:.2f} loss_l1:{:.4e} loss_rec:{{:.4e}}'.format(epoch, i, args.step_per_epoch, data_time_interval, train_time_interval, info['loss_l1'], info['loss_reconstruct']))
             step += 1
         nr_eval += 1
         if nr_eval % 5 == 0:

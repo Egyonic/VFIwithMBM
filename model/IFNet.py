@@ -630,7 +630,7 @@ class IFNet_bf_resnet_maeVit(nn.Module):
 
         self.contextnet = resnet50_feature()
         self.unet = UnetCBAM()
-        self.mae =get_local_mae()
+        self.mae = get_local_mae()
 
     def forward(self, x, scale=[4, 2, 1], timestep=0.5):
         img0 = x[:, :3]
@@ -684,9 +684,16 @@ class IFNet_bf_resnet_maeVit(nn.Module):
 
         # 重建阶段
         fusion_imgs = merged[2]
-        self.mae(fusion_imgs, mask)
-
-        return flow_list, mask_list[2], merged, flow_teacher, merged_teacher, loss_distill
+        if hasattr(self, 'mae'):
+            if gt.shape[1] == 3:
+                # 训练时使用 gt 做目标，推测时使用fusion_imgs
+                imgs_reconstructed, loss_reconstruct = self.mae(fusion_imgs, mask, gt)
+            else:
+                imgs_reconstructed, loss_reconstruct = self.mae(fusion_imgs, mask, fusion_imgs)
+            return flow_list, mask_list[2], merged, flow_teacher, merged_teacher, loss_distill, \
+                    imgs_reconstructed, loss_reconstruct
+        else:
+            return flow_list, mask_list[2], merged, flow_teacher, merged_teacher, loss_distill, None, 0
 
 
 # test net
