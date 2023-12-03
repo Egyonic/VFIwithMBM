@@ -433,7 +433,7 @@ class MaskedAutoencoderViTSpecified(nn.Module):
 
     def forward_encoder(self, x, patch_mask):
         # embed patches
-        x = self.patch_embed(x)
+        x = self.patch_embed(x.clone())
 
         # add pos embed w/o cls token
         x = x + self.pos_embed[:, 1:, :]

@@ -104,7 +104,7 @@ class Model:
             = self.flownet(torch.cat((imgs, gt), 1), scale=[4, 2, 1])
         if imgs_reconstructed is None:
             imgs_reconstructed = merged[2]
-            loss_reconstruct = 0.0
+            # loss_reconstruct = 0.0
         loss_l1 = (self.lap(merged[2], gt)).mean()
         loss_tea = (self.lap(merged_teacher, gt)).mean()
         if training:
