@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 from model.lomar.models_lomar import MaskedAutoencoderViT, mae_vit_base_patch16
 from model.lomar.models_vit import vit_base_patch16_decoder
-from model.mae.models_mae import mae_vit_spe_base_patch16_dec512d8b
+from model.mae.models_mae import mae_vit_spe_base_patch16_dec512d8b, mae_vit_spe_base_patch8_dec512d8b
 
 from model.warplayer import warp
 import torch.nn.functional as F
@@ -223,7 +223,7 @@ def get_rec_region(tensor, low, high):
     return rec_region
 
 
-def get_rec_patches(mask, patch_size=16, threshold=1):
+def get_rec_patches(mask, patch_size=8, threshold=2):
     """
     根据 mask 产生 patch mask
     :param mask: 遮挡区域，1表示遮挡
@@ -250,17 +250,17 @@ def is_rec_window(img_patch, min_pix=512):
 
 
 class LocalMae(nn.Module):
-    def __init__(self, patch_size=16, mask_min=0.2, mask_max=0.8):
+    def __init__(self, patch_size=8, mask_min=0.2, mask_max=0.8):
         super(LocalMae, self).__init__()
-        self.mae_vit = mae_vit_spe_base_patch16_dec512d8b()
+        self.mae_vit = mae_vit_spe_base_patch8_dec512d8b()
         # self.decoder = vit_base_patch16_decoder()
         self.mask_min = mask_min
         self.mask_max = mask_max
         self.patch_size = patch_size
-        self.window_size = 112
-        self.rec_threshold = patch_size * patch_size * 2  # 最少n个patch就重建
+        self.window_size = 56
+        self.rec_threshold = 2  # 最少n个patch就重建
 
-    def sliding_window(self, imgs, target, rec_region, window_size, f2=is_rec_window):
+    def sliding_window(self, imgs, target, rec_region, window_size):
         batch_size, _, height, width = imgs.size()
         window_h = height // window_size
         window_w = width // window_size
@@ -274,7 +274,7 @@ class LocalMae(nn.Module):
                                         j * window_size:(j + 1) * window_size]
 
                     # 判断是否需要重建
-                    is_reconstruct = f2(window_rec_region)
+                    is_reconstruct = is_rec_window(window_rec_region)
                     if is_reconstruct:
                         img_window = imgs[b, :, i * window_size:(i + 1) * window_size,
                                      j * window_size:(j + 1) * window_size]
@@ -282,7 +282,7 @@ class LocalMae(nn.Module):
                         target_window = target[b, :, i * window_size:(i + 1) * window_size,
                                      j * window_size:(j + 1) * window_size]
                         target_window = target_window.unsqueeze(0)
-                        patch_mask, _ = get_rec_patches(window_rec_region, patch_size=16)
+                        patch_mask, _ = get_rec_patches(window_rec_region, patch_size=self.patch_size)
                         pred_window, window_loss = self.mae_vit(img_window, patch_mask, target_window)
                         # Replace corresponding window in imgs with processed window
                         imgs[b, :, i * window_size:(i + 1) * window_size,
@@ -296,15 +296,14 @@ class LocalMae(nn.Module):
 
         # 预处理阶段，根据mask确定重建的范围
         mask_region = get_rec_region(mask, self.mask_min, self.mask_max)
-        mask_patch, window_region = get_rec_patches(mask_region)
+        mask_patch, window_region = get_rec_patches(mask_region, patch_size=self.patch_size)
 
-        # 获得需要重建的图片window，记录相应的位置
-        imgs_reconstructed, loss_sum = self.sliding_window(imgs, target, window_region, 112)
+        imgs_reconstructed, loss_sum = self.sliding_window(imgs, target, window_region, self.window_size)
 
         return imgs_reconstructed, loss_sum
 
 
-def get_local_mae():
+def get_local_mae_patch_8():
     return LocalMae()
 
 
@@ -375,6 +374,7 @@ if __name__ == "__main__":
     mask_img = (mask_img[:, 0, :, :]).unsqueeze(0)
     mask_img = mask_img[:, :, :, :224]
 
-    model = LocalMae()
+    model = LocalMae(patch_size=8)
     out = model(I0, mask_img, target)
+    print('ok')
 
