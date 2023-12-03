@@ -76,6 +76,17 @@ class Model:
         else:
             flow2, mask2, merged2, flow_teacher2, merged_teacher2, loss_distill2 = self.flownet(imgs.flip(2).flip(3), scale_list, timestep=timestep)
             return (merged[2] + merged2[2].flip(2).flip(3)) / 2
+
+    def inference_with_mask(self, img0, img1, scale=1, scale_list=[4, 2, 1], TTA=False, timestep=0.5):
+        for i in range(3):
+            scale_list[i] = scale_list[i] * 1.0 / scale
+        imgs = torch.cat((img0, img1), 1)
+        flow, mask, merged, flow_teacher, merged_teacher, loss_distill = self.flownet(imgs, scale_list, timestep=timestep)
+        if TTA == False:
+            return merged[2], mask
+        else:
+            flow2, mask2, merged2, flow_teacher2, merged_teacher2, loss_distill2 = self.flownet(imgs.flip(2).flip(3), scale_list, timestep=timestep)
+            return (merged[2] + merged2[2].flip(2).flip(3)) / 2
     
     def update(self, imgs, gt, learning_rate=0, mul=1, training=True, flow_gt=None):
         for param_group in self.optimG.param_groups:
@@ -87,12 +98,16 @@ class Model:
             self.train()
         else:
             self.eval()
-        flow, mask, merged, flow_teacher, merged_teacher, loss_distill = self.flownet(torch.cat((imgs, gt), 1), scale=[4, 2, 1])
+        flow, mask, merged, flow_teacher, merged_teacher, loss_distill, imgs_reconstructed, loss_reconstruct \
+            = self.flownet(torch.cat((imgs, gt), 1), scale=[4, 2, 1])
+        if imgs_reconstructed is None:
+            imgs_reconstructed = merged[2]
+            loss_reconstruct = 0.0
         loss_l1 = (self.lap(merged[2], gt)).mean()
         loss_tea = (self.lap(merged_teacher, gt)).mean()
         if training:
             self.optimG.zero_grad()
-            loss_G = loss_l1 + loss_tea + loss_distill * 0.01 # when training RIFEm, the weight of loss_distill should be 0.005 or 0.002
+            loss_G = loss_l1 + loss_tea + loss_reconstruct * 0.1 + loss_distill * 0.01 # when training RIFEm, the weight of loss_distill should be 0.005 or 0.002
             loss_G.backward()
             self.optimG.step()
         else:
@@ -106,4 +121,5 @@ class Model:
             'loss_l1': loss_l1,
             'loss_tea': loss_tea,
             'loss_distill': loss_distill,
+            'loss_reconstruct': loss_reconstruct,
             }
