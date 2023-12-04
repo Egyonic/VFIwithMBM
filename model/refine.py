@@ -251,7 +251,7 @@ def is_rec_window(img_patch, min_pix=512):
 
 
 class LocalMae(nn.Module):
-    def __init__(self, patch_size=8, mask_min=0.15, mask_max=0.85, rec_threshold=32):
+    def __init__(self, patch_size=8, mask_min=0.15, mask_max=0.85, rec_threshold=16):
         super(LocalMae, self).__init__()
         self.mae_vit = mae_vit_spe_base_patch8_tiny()
         self.mask_min = mask_min
@@ -265,6 +265,7 @@ class LocalMae(nn.Module):
         window_h = height // window_size
         window_w = width // window_size
         loss_sum = 0.
+        window_rec_num = 0
 
         for b in range(batch_size):
             for i in range(window_h):
@@ -274,7 +275,7 @@ class LocalMae(nn.Module):
                                         j * window_size:(j + 1) * window_size]
 
                     # 判断是否需要重建
-                    is_reconstruct = is_rec_window(window_rec_region)
+                    is_reconstruct = is_rec_window(window_rec_region, self.patch_size**2 * self.rec_threshold)
                     if is_reconstruct:
                         img_window = imgs[b, :, i * window_size:(i + 1) * window_size,
                                      j * window_size:(j + 1) * window_size]
@@ -284,11 +285,12 @@ class LocalMae(nn.Module):
                         target_window = target_window.unsqueeze(0)
                         patch_mask, _ = get_rec_patches(window_rec_region, patch_size=self.patch_size, threshold=self.rec_threshold)
                         pred_window, window_loss = self.mae_vit(img_window, patch_mask, target_window)
+                        window_rec_num = window_rec_num + 1
                         # Replace corresponding window in imgs with processed window
                         imgs[b, :, i * window_size:(i + 1) * window_size,
                         j * window_size:(j + 1) * window_size] = pred_window
                         loss_sum = loss_sum + window_loss
-
+        print(f"reconstruct {window_rec_num} window in 1 batch")
         return imgs, loss_sum
 
     def forward(self, imgs, mask, target):
@@ -304,7 +306,7 @@ class LocalMae(nn.Module):
 
 
 def get_local_mae_patch_8():
-    return LocalMae(patch_size=8, mask_min=0.1, mask_max=0.9, rec_threshold=32)
+    return LocalMae(patch_size=8, mask_min=0.15, mask_max=0.85, rec_threshold=16)
 
 
 def show_image(image, title=''):
