@@ -1,5 +1,5 @@
 import os
-
+import time
 import cv2
 import torch
 import torch.nn as nn
@@ -251,7 +251,7 @@ def is_rec_window(img_patch, min_pix=512):
 
 
 class LocalMae(nn.Module):
-    def __init__(self, patch_size=8, mask_min=0.15, mask_max=0.85, rec_threshold=16):
+    def __init__(self, patch_size=8, mask_min=0.15, mask_max=0.85, rec_threshold=32):
         super(LocalMae, self).__init__()
         self.mae_vit = mae_vit_spe_base_patch8_tiny()
         self.mask_min = mask_min
@@ -296,7 +296,7 @@ class LocalMae(nn.Module):
 
         # 预处理阶段，根据mask确定重建的范围
         mask_region = get_rec_region(mask, self.mask_min, self.mask_max)
-        mask_patch, window_region = get_rec_patches(mask_region, patch_size=self.patch_size)
+        mask_patch, window_region = get_rec_patches(mask_region, patch_size=self.patch_size, threshold=self.rec_threshold)
 
         imgs_reconstructed, loss_sum = self.sliding_window(imgs, target, window_region, self.window_size)
 
@@ -304,7 +304,7 @@ class LocalMae(nn.Module):
 
 
 def get_local_mae_patch_8():
-    return LocalMae(patch_size=8, mask_min=0.15, mask_max=0.85, rec_threshold=16)
+    return LocalMae(patch_size=8, mask_min=0.1, mask_max=0.9, rec_threshold=32)
 
 
 def show_image(image, title=''):

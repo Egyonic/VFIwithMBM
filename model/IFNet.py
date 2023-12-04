@@ -615,7 +615,18 @@ class IFNet_bf_cbam_mulExt(nn.Module):
         tmp = self.unet(img0, img1, warped_img0, warped_img1, mask, flow, c0, c1)
         res = tmp[:, :3] * 2 - 1
         merged[2] = torch.clamp(merged[2] + res, 0, 1)
-        return flow_list, mask_list[2], merged, flow_teacher, merged_teacher, loss_distill
+        #return flow_list, mask_list[2], merged, flow_teacher, merged_teacher, loss_distill
+        fusion_imgs = merged[2]
+        if hasattr(self, 'mae'):
+            if gt.shape[1] == 3:
+                # 训练时使用 gt 做目标，推测时使用fusion_imgs
+                imgs_reconstructed, loss_reconstruct = self.mae(fusion_imgs, mask, gt)
+            else:
+                imgs_reconstructed, loss_reconstruct = self.mae(fusion_imgs, mask, fusion_imgs)
+            return flow_list, mask_list[2], merged, flow_teacher, merged_teacher, loss_distill, \
+                    imgs_reconstructed, loss_reconstruct
+        else:
+            return flow_list, mask_list[2], merged, flow_teacher, merged_teacher, loss_distill, None, 0
 
 
 class IFNet_bf_resnet_local_mae(nn.Module):
@@ -678,6 +689,7 @@ class IFNet_bf_resnet_local_mae(nn.Module):
                 loss_distill += (((flow_teacher.detach() - flow_list[i]) ** 2).mean(1, True) ** 0.5 * loss_mask).mean()
         c0 = self.contextnet(img0, flow[:, :2])
         c1 = self.contextnet(img1, flow[:, 2:4])
+        
         tmp = self.unet(img0, img1, warped_img0, warped_img1, mask, flow, c0, c1)
         res = tmp[:, :3] * 2 - 1
         merged[2] = torch.clamp(merged[2] + res, 0, 1)
@@ -687,7 +699,10 @@ class IFNet_bf_resnet_local_mae(nn.Module):
         if hasattr(self, 'mae'):
             if gt.shape[1] == 3:
                 # 训练时使用 gt 做目标，推测时使用fusion_imgs
+                #start_time = time.time()
                 imgs_reconstructed, loss_reconstruct = self.mae(fusion_imgs, mask, gt)
+                #end_time = time.time()
+                #print(f"imgs_reconstruction took {end_time - start_time} seconds.")
             else:
                 imgs_reconstructed, loss_reconstruct = self.mae(fusion_imgs, mask, fusion_imgs)
             return flow_list, mask_list[2], merged, flow_teacher, merged_teacher, loss_distill, \
