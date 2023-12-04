@@ -11,7 +11,8 @@ import matplotlib.pyplot as plt
 
 from model.lomar.models_lomar import MaskedAutoencoderViT, mae_vit_base_patch16
 from model.lomar.models_vit import vit_base_patch16_decoder
-from model.mae.models_mae import mae_vit_spe_base_patch16_dec512d8b, mae_vit_spe_base_patch8_dec512d8b
+from model.mae.models_mae import mae_vit_spe_base_patch16_dec512d8b, mae_vit_spe_base_patch8_dec512d8b, \
+    mae_vit_spe_base_patch8_tiny
 
 from model.warplayer import warp
 import torch.nn.functional as F
@@ -223,7 +224,7 @@ def get_rec_region(tensor, low, high):
     return rec_region
 
 
-def get_rec_patches(mask, patch_size=8, threshold=2):
+def get_rec_patches(mask, patch_size=8, threshold=16):
     """
     根据 mask 产生 patch mask
     :param mask: 遮挡区域，1表示遮挡
@@ -250,15 +251,14 @@ def is_rec_window(img_patch, min_pix=512):
 
 
 class LocalMae(nn.Module):
-    def __init__(self, patch_size=8, mask_min=0.2, mask_max=0.8):
+    def __init__(self, patch_size=8, mask_min=0.15, mask_max=0.85, rec_threshold=16):
         super(LocalMae, self).__init__()
-        self.mae_vit = mae_vit_spe_base_patch8_dec512d8b()
-        # self.decoder = vit_base_patch16_decoder()
+        self.mae_vit = mae_vit_spe_base_patch8_tiny()
         self.mask_min = mask_min
         self.mask_max = mask_max
         self.patch_size = patch_size
         self.window_size = 56
-        self.rec_threshold = 2  # 最少n个patch就重建
+        self.rec_threshold = rec_threshold  # 最少n个像素就重建
 
     def sliding_window(self, imgs, target, rec_region, window_size):
         batch_size, _, height, width = imgs.size()
@@ -304,7 +304,7 @@ class LocalMae(nn.Module):
 
 
 def get_local_mae_patch_8():
-    return LocalMae()
+    return LocalMae(patch_size=8, mask_min=0.15, mask_max=0.85, rec_threshold=16)
 
 
 def show_image(image, title=''):

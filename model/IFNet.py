@@ -630,7 +630,7 @@ class IFNet_bf_resnet_local_mae(nn.Module):
 
         self.contextnet = resnet50_feature()
         self.unet = UnetCBAM()
-        self.mae = get_local_mae()
+        self.mae = get_local_mae_patch_8()
 
     def forward(self, x, scale=[4, 2, 1], timestep=0.5):
         img0 = x[:, :3]
