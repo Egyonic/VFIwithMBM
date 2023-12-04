@@ -523,6 +523,14 @@ def mae_vit_spe_base_patch8_dec512d8b(**kwargs):
     return model
 
 
+def mae_vit_spe_base_patch8_tiny(**kwargs):
+    model = MaskedAutoencoderViTSpecified(
+        img_size=56, patch_size=8, embed_dim=512, depth=8, num_heads=9,
+        decoder_embed_dim=512, decoder_depth=6, decoder_num_heads=8,
+        mlp_ratio=3, norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
+    return model
+
+
 mae_spe_mask_base_patch16 = mae_vit_spe_base_patch16_dec512d8b
 
 if __name__ == '__main__':
