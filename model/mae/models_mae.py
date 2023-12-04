@@ -501,6 +501,7 @@ class MaskedAutoencoderViTSpecified(nn.Module):
     def forward(self, imgs, patch_mask, target_window):
         latent = self.forward_encoder(imgs, patch_mask)
         pred = self.forward_decoder(latent, patch_mask)  # [N, L, p*p*3]
+        pred = torch.sigmoid(pred)
         loss = self.forward_loss(target_window, pred, patch_mask)
         img_pred = self.unpatchify(pred)
         # return loss, pred, patch_mask
@@ -525,8 +526,8 @@ def mae_vit_spe_base_patch8_dec512d8b(**kwargs):
 
 def mae_vit_spe_base_patch8_tiny(**kwargs):
     model = MaskedAutoencoderViTSpecified(
-        img_size=56, patch_size=8, embed_dim=512, depth=8, num_heads=9,
-        decoder_embed_dim=512, decoder_depth=6, decoder_num_heads=8,
+        img_size=56, patch_size=8, embed_dim=512, depth=8, num_heads=8,
+        decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=8,
         mlp_ratio=3, norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
     return model
 
