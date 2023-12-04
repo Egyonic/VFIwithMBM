@@ -88,7 +88,7 @@ def train(model, local_rank, args):
                     writer.add_image(str(i) + '/mask', mask[i], step, dataformats='HWC')
                 writer.flush()
             if local_rank == 0:
-                print('epoch:{} {}/{} time:{:.2f}+{:.2f} loss_l1:{:.4e} loss_rec:{{:.4e}}'.format(epoch, i, args.step_per_epoch, data_time_interval, train_time_interval, info['loss_l1'], info['loss_reconstruct']))
+                print('epoch:{} {}/{} time:{:.2f}+{:.2f} loss_l1:{:.4e} loss_rec:{:.4e}'.format(epoch, i, args.step_per_epoch, data_time_interval, train_time_interval, info['loss_l1'], info['loss_reconstruct']))
             step += 1
         nr_eval += 1
         if nr_eval % 5 == 0:
