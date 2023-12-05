@@ -251,13 +251,14 @@ def is_rec_window(img_patch, min_pix=512):
 
 
 class LocalMae(nn.Module):
-    def __init__(self, patch_size=8, mask_min=0.15, mask_max=0.85, rec_threshold=16):
+    def __init__(self, patch_size=8, mask_min=0.15, mask_max=0.85, rec_threshold=7, patch_thr=16):
         super(LocalMae, self).__init__()
         self.mae_vit = mae_vit_spe_base_patch8_tiny()
         self.mask_min = mask_min
         self.mask_max = mask_max
         self.patch_size = patch_size
         self.window_size = 56
+        self.patch_thr = patch_thr
         self.rec_threshold = rec_threshold  # 最少n个像素就重建
 
     def sliding_window(self, imgs, target, rec_region, window_size):
@@ -283,7 +284,7 @@ class LocalMae(nn.Module):
                         target_window = target[b, :, i * window_size:(i + 1) * window_size,
                                      j * window_size:(j + 1) * window_size]
                         target_window = target_window.unsqueeze(0)
-                        patch_mask, _ = get_rec_patches(window_rec_region, patch_size=self.patch_size, threshold=self.rec_threshold)
+                        patch_mask, _ = get_rec_patches(window_rec_region, patch_size=self.patch_size, threshold=self.patch_thr)
                         pred_window, window_loss = self.mae_vit(img_window, patch_mask, target_window)
                         window_rec_num = window_rec_num + 1
                         # Replace corresponding window in imgs with processed window
@@ -298,7 +299,7 @@ class LocalMae(nn.Module):
 
         # 预处理阶段，根据mask确定重建的范围
         mask_region = get_rec_region(mask, self.mask_min, self.mask_max)
-        mask_patch, window_region = get_rec_patches(mask_region, patch_size=self.patch_size, threshold=self.rec_threshold)
+        mask_patch, window_region = get_rec_patches(mask_region, patch_size=self.patch_size, threshold=self.patch_thr)
 
         imgs_reconstructed, loss_sum = self.sliding_window(imgs, target, window_region, self.window_size)
 
@@ -306,7 +307,7 @@ class LocalMae(nn.Module):
 
 
 def get_local_mae_patch_8():
-    return LocalMae(patch_size=8, mask_min=0.15, mask_max=0.85, rec_threshold=16)
+    return LocalMae(patch_size=8, mask_min=0.15, mask_max=0.85, rec_threshold=7, patch_thr=16)
 
 
 def show_image(image, title=''):
