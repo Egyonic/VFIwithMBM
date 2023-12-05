@@ -287,7 +287,7 @@ class LocalMae(nn.Module):
                         #start_time = time.time()
                         pred_window, window_loss = self.mae_vit(img_window, patch_mask, target_window)
                         #end_time = time.time()
-                        window_rec_num = window_rec_num+1
+                        #window_rec_num = window_rec_num+1
                         #print(f"reconstruct 1 window took {end_time-start_time} seconds.")
 
                         patch_mask, _ = get_rec_patches(window_rec_region, patch_size=self.patch_size, threshold=self.rec_threshold)
@@ -306,6 +306,8 @@ class LocalMae(nn.Module):
 
         # 预处理阶段，根据mask确定重建的范围
         mask_region = get_rec_region(mask, self.mask_min, self.mask_max)
+        count_ones = torch.sum(mask_region[0:1,:,:,:] == 1).item()
+        print(f"mask[0]中值为1的像素点: {count_ones} {count_ones/(H*W)}")
         mask_patch, window_region = get_rec_patches(mask_region, patch_size=self.patch_size, threshold=self.rec_threshold)
 
         imgs_reconstructed, loss_sum = self.sliding_window(imgs, target, window_region, self.window_size)
