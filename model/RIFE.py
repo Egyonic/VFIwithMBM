@@ -108,12 +108,12 @@ class Model:
         if imgs_reconstructed is None:
             imgs_reconstructed = merged[2]
             # loss_reconstruct = 0.0
-        loss_l1 = (self.lap(merged[2], gt)).mean()
+        loss_l1 = (self.lap(imgs_reconstructed, gt)).mean()
         loss_tea = (self.lap(merged_teacher, gt)).mean()
         #start_time = time.time()
         if training:
             self.optimG.zero_grad()
-            loss_G = loss_l1 + loss_tea + loss_reconstruct * 0.01 + loss_distill * 0.01 # when training RIFEm, the weight of loss_distill should be 0.005 or 0.002
+            loss_G = loss_l1 + loss_tea + loss_reconstruct + loss_distill * 0.01 # when training RIFEm, the weight of loss_distill should be 0.005 or 0.002
             loss_G.backward()
             self.optimG.step()
         else:
