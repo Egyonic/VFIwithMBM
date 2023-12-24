@@ -14,6 +14,8 @@ from torch.utils.data import DataLoader, Dataset
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data.distributed import DistributedSampler
 
+from model.pytorch_msssim import ssim_matlab
+
 device = torch.device("cuda")
 
 log_path = 'train_log'
@@ -81,11 +83,13 @@ def train(model, local_rank, args):
                 merged_img = (info['merged_tea'].permute(0, 2, 3, 1).detach().cpu().numpy() * 255).astype('uint8')
                 flow0 = info['flow'].permute(0, 2, 3, 1).detach().cpu().numpy()
                 flow1 = info['flow_tea'].permute(0, 2, 3, 1).detach().cpu().numpy()
+                reconstructed_img = (info['imgs_reconstructed'].permute(0, 2, 3, 1).detach().cpu().numpy() * 255).astype('uint8')
                 for i in range(3):
                     imgs = np.concatenate((merged_img[i], pred[i], gt[i]), 1)[:, :, ::-1]
                     writer.add_image(str(i) + '/img', imgs, step, dataformats='HWC')
                     writer.add_image(str(i) + '/flow', np.concatenate((flow2rgb(flow0[i]), flow2rgb(flow1[i])), 1), step, dataformats='HWC')
                     writer.add_image(str(i) + '/mask', mask[i], step, dataformats='HWC')
+                    writer.add_image(str(i) + '/mask', reconstructed_img[i], step, dataformats='HWC')
                 writer.flush()
             if local_rank == 0:
                 print('epoch:{} {}/{} time:{:.2f}+{:.2f} loss_l1:{:.4e} loss_rec:{:.4e}'.format(epoch, i, args.step_per_epoch, data_time_interval, train_time_interval, info['loss_l1'], info['loss_reconstruct']))

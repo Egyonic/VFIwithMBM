@@ -251,15 +251,18 @@ def is_rec_window(img_patch, min_pix=512):
 
 
 class LocalMae(nn.Module):
-    def __init__(self, patch_size=8, mask_min=0.15, mask_max=0.85, rec_threshold=7, patch_thr=16):
+    def __init__(self, patch_size=8, mask_min=0.15, mask_max=0.85, rec_threshold=7, patch_thr=16, img_size=56):
         super(LocalMae, self).__init__()
-        self.mae_vit = mae_vit_spe_base_patch8_tiny()
+        if img_size == 56:
+            self.mae_vit = mae_vit_spe_base_patch8_tiny()
+        elif img_size == 112:
+            self.mae_vit = mae_vit_spe_base_patch16_dec512d8b()
         self.mask_min = mask_min
         self.mask_max = mask_max
         self.patch_size = patch_size
-        self.window_size = 56
-        self.patch_thr = patch_thr
-        self.rec_threshold = rec_threshold  # 最少n个像素就重建
+        self.window_size = img_size
+        self.patch_thr = patch_thr  # 一个patch中有多少像素符合条件才重建
+        self.rec_threshold = rec_threshold  # 最少n个块就重建
 
     def sliding_window(self, imgs, target, rec_region, window_size):
         batch_size, _, height, width = imgs.size()
@@ -276,27 +279,26 @@ class LocalMae(nn.Module):
                                         j * window_size:(j + 1) * window_size]
 
                     # 判断是否需要重建
-                    is_reconstruct = is_rec_window(window_rec_region, self.patch_size**2 * self.rec_threshold)
+                    is_reconstruct = is_rec_window(window_rec_region, self.patch_size ** 2 * self.rec_threshold)
                     if is_reconstruct:
                         img_window = imgs[b, :, i * window_size:(i + 1) * window_size,
                                      j * window_size:(j + 1) * window_size]
                         img_window = img_window.unsqueeze(0)
                         target_window = target[b, :, i * window_size:(i + 1) * window_size,
-                                     j * window_size:(j + 1) * window_size]
+                                        j * window_size:(j + 1) * window_size]
                         target_window = target_window.unsqueeze(0)
-                        #start_time = time.time()
-                        #end_time = time.time()
-                        #print(f"reconstruct 1 window took {end_time-start_time} seconds.")
-                        patch_mask, _ = get_rec_patches(window_rec_region, patch_size=self.patch_size, threshold=self.patch_thr)
+                        patch_mask, _ = get_rec_patches(window_rec_region, patch_size=self.patch_size,
+                                                        threshold=self.patch_thr)
                         pred_window, window_loss = self.mae_vit(img_window, patch_mask, target_window)
                         window_rec_num = window_rec_num + 1
-
                         # Replace corresponding window in imgs with processed window
                         imgs[b, :, i * window_size:(i + 1) * window_size,
-                        j * window_size:(j + 1) * window_size] = pred_window
+                        j * window_size:(j + 1) * window_size] = img_window * (
+                                    1 - window_rec_region) + pred_window * window_rec_region
                         loss_sum = loss_sum + window_loss
         print(f"reconstruct {window_rec_num} window in 1 batch")
-        return imgs, loss_sum
+        loss_avg = loss_sum / window_rec_num
+        return imgs, loss_avg
 
     def forward(self, imgs, mask, target):
         B, C, H, W = imgs.shape
@@ -314,7 +316,11 @@ class LocalMae(nn.Module):
 
 
 def get_local_mae_patch_8():
-    return LocalMae(patch_size=8, mask_min=0.15, mask_max=0.85, rec_threshold=7, patch_thr=16)
+    return LocalMae(patch_size=8, mask_min=0.15, mask_max=0.85, rec_threshold=7, patch_thr=16, img_size=56)
+
+
+def get_local_mae_patch_16():
+    return LocalMae(patch_size=16, mask_min=0.15, mask_max=0.85, rec_threshold=4, patch_thr=16, img_size=112)
 
 
 def show_image(image, title=''):
@@ -384,7 +390,12 @@ if __name__ == "__main__":
     mask_img = (mask_img[:, 0, :, :]).unsqueeze(0)
     mask_img = mask_img[:, :, :, :224]
 
-    model = get_local_mae_patch_8()
-    out = model(I0, mask_img, target)
-    print('ok')
+    result_dir = 'test_result'
 
+    model = get_local_mae_patch_16()
+    output_tensor, loss = model(I0, mask_img, target)
+    for i in range(1):
+        reconstructed_img = np.round((output_tensor * 255)[i].detach().cpu().numpy()).astype('uint8').transpose(1, 2, 0)
+        # mask_img = mask_img[:, :224, :]
+        cv2.imwrite(os.path.join(result_dir, f'reconstructed_img_{i}.png'), reconstructed_img)
+    print('ok')
