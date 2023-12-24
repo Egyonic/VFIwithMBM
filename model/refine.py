@@ -287,8 +287,7 @@ class LocalMae(nn.Module):
                         #start_time = time.time()
                         #end_time = time.time()
                         #print(f"reconstruct 1 window took {end_time-start_time} seconds.")
-
-                        patch_mask, _ = get_rec_patches(window_rec_region, patch_size=self.patch_size, threshold=self.patch_thr
+                        patch_mask, _ = get_rec_patches(window_rec_region, patch_size=self.patch_size, threshold=self.patch_thr)
                         pred_window, window_loss = self.mae_vit(img_window, patch_mask, target_window)
                         window_rec_num = window_rec_num + 1
 
