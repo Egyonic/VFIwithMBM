@@ -105,19 +105,19 @@ class Model:
         else:
             self.eval()
         #start_time = time.time()
-        flow, mask, merged, flow_teacher, merged_teacher, loss_distill, imgs_reconstructed, loss_reconstruct \
+        flow, mask, merged, flow_teacher, merged_teacher, loss_distill, \
             = self.flownet(torch.cat((imgs, gt), 1), scale=[4, 2, 1])
         #end_time = time.time()
         #print(f"flownet took {end_time - start_time} seconds.")
         if imgs_reconstructed is None:
             imgs_reconstructed = merged[2]
-            # loss_reconstruct = 0.0
+            loss_reconstruct = 0.0
         loss_l1 = (self.lap(imgs_reconstructed, gt)).mean()
         loss_tea = (self.lap(merged_teacher, gt)).mean()
         #start_time = time.time()
         if training:
             self.optimG.zero_grad()
-            loss_G = loss_l1 + loss_tea + loss_reconstruct + loss_distill * 0.01 # when training RIFEm, the weight of loss_distill should be 0.005 or 0.002
+            loss_G = loss_l1 + loss_tea + loss_distill * 0.01 # when training RIFEm, the weight of loss_distill should be 0.005 or 0.002
             loss_G.backward()
             self.optimG.step()
         else:
