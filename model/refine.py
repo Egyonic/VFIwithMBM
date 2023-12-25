@@ -191,6 +191,42 @@ class UnetCBAM(nn.Module):
         return torch.sigmoid(x)
 
 
+class UnetCBAM_L(nn.Module):
+    def __init__(self):
+        super(UnetCBAM_L, self).__init__()
+        self.down0 = Conv2(17, 2 * c)
+        self.down1 = Conv2(4 * c, 4 * c)
+        self.down2 = Conv2(8 * c, 8 * c)
+        self.down3 = Conv2(16 * c, 16 * c)
+
+        self.cbam0 = CBAM(channels=2 * c)
+        self.cbam1 = CBAM(channels=4 * c)
+        self.cbam2 = CBAM(channels=8 * c)
+        self.cbam3 = CBAM(channels=16 * c)
+
+        self.up0 = deconv(32 * c, 8 * c)
+        self.up1 = deconv(16 * c, 4 * c)
+        self.up2 = deconv(8 * c, 2 * c)
+        self.up3 = deconv(4 * c, c)
+        self.conv = nn.Conv2d(c, 3, 3, 1, 1)
+
+    def forward(self, img0, img1, warped_img0, warped_img1, mask, flow, c0, c1):
+        s0 = self.down0(torch.cat((img0, img1, warped_img0, warped_img1, mask, flow), 1))
+        s0 = self.cbam0(s0) + s0
+        s1 = self.down1(torch.cat((s0, c0[0], c1[0]), 1))
+        s1 = self.cbam1(s1) + s1
+        s2 = self.down2(torch.cat((s1, c0[1], c1[1]), 1))
+        s2 = self.cbam2(s2) + s2
+        s3 = self.down3(torch.cat((s2, c0[2], c1[2]), 1))
+        s3 = self.cbam3(s3) + s3
+        x = self.up0(torch.cat((s3, c0[3], c1[3]), 1))
+        x = self.up1(torch.cat((x, s2), 1))
+        x = self.up2(torch.cat((x, s1), 1))
+        x = self.up3(torch.cat((x, s0), 1))
+        x = self.conv(x)
+        return torch.sigmoid(x)
+
+
 class UNetMAEViT(nn.Module):
     def __init__(self):
         super(UNetMAEViT, self).__init__()
@@ -297,7 +333,10 @@ class LocalMae(nn.Module):
                                     1 - window_rec_region) + pred_window * window_rec_region
                         loss_sum = loss_sum + window_loss
         print(f"reconstruct {window_rec_num} window in 1 batch")
-        loss_avg = loss_sum / window_rec_num
+        if window_rec_num == 0:
+            loss_avg = 0.0
+        else:
+            loss_avg = loss_sum / window_rec_num
         return imgs, loss_avg
 
     def forward(self, imgs, mask, target):

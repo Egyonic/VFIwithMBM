@@ -75,7 +75,7 @@ def train(model, local_rank, args):
                 writer.add_scalar('loss/l1', info['loss_l1'], step)
                 writer.add_scalar('loss/tea', info['loss_tea'], step)
                 writer.add_scalar('loss/distill', info['loss_distill'], step)
-                writer.add_scalar('loss/reconstruct', info['loss_reconstruct'], step)
+                #writer.add_scalar('loss/reconstruct', info['loss_reconstruct'], step)
             if step % 1000 == 1 and local_rank == 0:
                 gt = (gt.permute(0, 2, 3, 1).detach().cpu().numpy() * 255).astype('uint8')
                 mask = (torch.cat((info['mask'], info['mask_tea']), 3).permute(0, 2, 3, 1).detach().cpu().numpy() * 255).astype('uint8')
@@ -83,16 +83,15 @@ def train(model, local_rank, args):
                 merged_img = (info['merged_tea'].permute(0, 2, 3, 1).detach().cpu().numpy() * 255).astype('uint8')
                 flow0 = info['flow'].permute(0, 2, 3, 1).detach().cpu().numpy()
                 flow1 = info['flow_tea'].permute(0, 2, 3, 1).detach().cpu().numpy()
-                reconstructed_img = (info['imgs_reconstructed'].permute(0, 2, 3, 1).detach().cpu().numpy() * 255).astype('uint8')
+                #reconstructed_img = (info['imgs_reconstructed'].permute(0, 2, 3, 1).detach().cpu().numpy() * 255).astype('uint8')
                 for i in range(3):
                     imgs = np.concatenate((merged_img[i], pred[i], gt[i]), 1)[:, :, ::-1]
                     writer.add_image(str(i) + '/img', imgs, step, dataformats='HWC')
                     writer.add_image(str(i) + '/flow', np.concatenate((flow2rgb(flow0[i]), flow2rgb(flow1[i])), 1), step, dataformats='HWC')
                     writer.add_image(str(i) + '/mask', mask[i], step, dataformats='HWC')
-                    writer.add_image(str(i) + '/mask', reconstructed_img[i], step, dataformats='HWC')
                 writer.flush()
             if local_rank == 0:
-                print('epoch:{} {}/{} time:{:.2f}+{:.2f} loss_l1:{:.4e} loss_rec:{:.4e}'.format(epoch, i, args.step_per_epoch, data_time_interval, train_time_interval, info['loss_l1'], info['loss_reconstruct']))
+                print('epoch:{} {}/{} time:{:.2f}+{:.2f} loss_l1:{:.4e}'.format(epoch, i, args.step_per_epoch, data_time_interval, train_time_interval, info['loss_l1']))
             step += 1
         nr_eval += 1
         if nr_eval % 5 == 0:
@@ -102,6 +101,7 @@ def train(model, local_rank, args):
         dist.barrier()
 
 def evaluate(model, val_data, nr_eval, local_rank, writer_val):
+    global max_psnr
     loss_l1_list = []
     loss_distill_list = []
     loss_tea_list = []
@@ -141,6 +141,7 @@ def evaluate(model, val_data, nr_eval, local_rank, writer_val):
         return
     writer_val.add_scalar('psnr', np.array(psnr_list).mean(), nr_eval)
     if np.array(psnr_list).mean() > max_psnr:
+        max_psnr = np.array(psnr_list).mean()
         model.save_model(log_path, 'best', local_rank)
     writer_val.add_scalar('psnr_teacher', np.array(psnr_list_teacher).mean(), nr_eval)
         
