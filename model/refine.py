@@ -194,7 +194,7 @@ class UnetCBAM(nn.Module):
 class UnetCBAM_L(nn.Module):
     def __init__(self):
         super(UnetCBAM_L, self).__init__()
-        self.down0 = Conv2(17, 2 * c)
+        self.down0 = Conv2(17, 2 * c, 1)
         self.down1 = Conv2(4 * c, 4 * c)
         self.down2 = Conv2(8 * c, 8 * c)
         self.down3 = Conv2(16 * c, 16 * c)
@@ -208,7 +208,7 @@ class UnetCBAM_L(nn.Module):
         self.up1 = deconv(16 * c, 4 * c)
         self.up2 = deconv(8 * c, 2 * c)
         self.up3 = deconv(4 * c, c)
-        self.conv = nn.Conv2d(c, 3, 3, 1, 1)
+        self.conv = nn.Conv2d(c, 3, 3, 2, 1)
 
     def forward(self, img0, img1, warped_img0, warped_img1, mask, flow, c0, c1):
         s0 = self.down0(torch.cat((img0, img1, warped_img0, warped_img1, mask, flow), 1))
