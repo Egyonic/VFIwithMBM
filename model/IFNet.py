@@ -5,7 +5,7 @@ from model.warplayer import warp
 from model.refine import *
 from model.biformer_models.biformer import Block as BiformerBlock
 from model.biformer_models.biformer import get_4_scale_multi_feature_extractor
-from model.resnet import resnet50_feature, resnet50_feature_tws, ResNet_feature_bi, get_ResNet_feature_bi
+from model.resnet import resnet50_feature, resnet50_feature_tws, ResNet_feature_bi, get_ResNet_feature_bi, resnet50_feature_L
 
 
 def deconv(in_planes, out_planes, kernel_size=4, stride=2, padding=1):
@@ -68,18 +68,12 @@ class IFBlock(nn.Module):
         if flow != None:
             flow = F.interpolate(flow, scale_factor=1. / scale, mode="bilinear", align_corners=False) * 1. / scale
             x = torch.cat((x, flow), 1)
-        # print(x.shape)
-        # breakpoint()
         x = self.tran_conv(x)
-        # print(f'shape before TF block: {x.shape}')
-        # breakpoint()
         x = self.tf_block(x)
-        # print(f'shape after TF block: {x.shape}')
         x = self.tf_conv_revert(x)
         x = self.conv0(x)
         x = self.convblock(x) + x
         tmp = self.lastconv(x)
-        # 上采样
         tmp = F.interpolate(tmp, scale_factor=scale * 2, mode="bilinear", align_corners=False)
         flow = tmp[:, :4] * scale * 2
         mask = tmp[:, 4:5]
@@ -157,10 +151,7 @@ class IFNet(nn.Module):
         warped_img1 = img1
         flow = None
         loss_distill = 0
-        # print(img0.shape)
-        # 学生网络
         stu = [self.block0, self.block1, self.block2]
-        # 三层IFBlock计算累加
         for i in range(3):
             if flow != None:
                 flow_d, mask_d = stu[i](torch.cat((img0, img1, warped_img0, warped_img1, mask), 1), flow,
@@ -237,10 +228,6 @@ class IFBlock_bf(nn.Module):
                 topk=4, mlp_ratio=3, side_dwconv=5, before_attn_dwconv=3, layer_scale_init_value=-1,
                 qk_dim=tf_dim, param_routing=False, diff_routing=False, soft_routing=False, pre_norm=True))
         self.tf_block = nn.Sequential(*biformer_blocks)
-        # self.tf_block = BiformerBlock(
-        #     dim=tf_dim, n_win=7, num_heads=4, kv_downsample_mode='identity', kv_per_win=-1,
-        #     topk=4, mlp_ratio=3, side_dwconv=5, before_attn_dwconv=3, layer_scale_init_value=-1,
-        #     qk_dim=tf_dim, param_routing=False, diff_routing=False, soft_routing=False, pre_norm=True)
 
     def forward(self, x, flow, scale):
         if scale != 1:
@@ -248,7 +235,6 @@ class IFBlock_bf(nn.Module):
         if flow != None:
             flow = F.interpolate(flow, scale_factor=1. / scale, mode="bilinear", align_corners=False) * 1. / scale
             x = torch.cat((x, flow), 1)
-        # breakpoint()
         x = self.conv0(x)
         x = self.convblock(x) + x
         y = self.tf_conv(x)
@@ -768,7 +754,7 @@ class IFNet_bf_resnet_cbam_L(nn.Module):
         self.block1 = IFBlock_bf_L(13 + 4, c=225, tf_dim=128)
         self.block2 = IFBlock_bf_L(13 + 4, c=135, tf_dim=256)
         self.block_tea = IFBlock_bf_L(16 + 4, c=135, tf_dim=256)
-        self.contextnet = resnet50_feature()
+        self.contextnet = resnet50_feature_L()
         self.unet = UnetCBAM_L()
 
     def forward(self, x, scale=[4, 2, 1], timestep=0.5):
