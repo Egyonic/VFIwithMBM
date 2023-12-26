@@ -90,7 +90,7 @@ class IFBlock_bf_L(nn.Module):
     def __init__(self, in_planes, c=64, tf_dim=64):
         super(IFBlock_bf_L, self).__init__()
         self.conv0 = nn.Sequential(
-            conv(in_planes, c // 2, 3, 2, 1),
+            conv(in_planes, c // 2, 3, 1, 1),
             conv(c // 2, c, 3, 2, 1),
         )
         self.tf_conv = nn.Sequential(
@@ -130,8 +130,8 @@ class IFBlock_bf_L(nn.Module):
         y = self.tf_block(y)
         y = self.tf_conv_revert(y)
         tmp = self.lastconv(x) + self.lastconv(y)
-        tmp = F.interpolate(tmp, scale_factor=scale * 2, mode="bilinear", align_corners=False)
-        flow = tmp[:, :4] * scale * 2
+        tmp = F.interpolate(tmp, scale_factor=scale, mode="bilinear", align_corners=False)
+        flow = tmp[:, :4] * scale
         mask = tmp[:, 4:5]
         return flow, mask
 
@@ -769,7 +769,7 @@ class IFNet_bf_resnet_cbam_L(nn.Module):
         self.block2 = IFBlock_bf_L(13 + 4, c=135, tf_dim=256)
         self.block_tea = IFBlock_bf_L(16 + 4, c=135, tf_dim=256)
         self.contextnet = resnet50_feature()
-        self.unet = UnetCBAM()
+        self.unet = UnetCBAM_L()
 
     def forward(self, x, scale=[4, 2, 1], timestep=0.5):
         img0 = x[:, :3]
@@ -783,7 +783,6 @@ class IFNet_bf_resnet_cbam_L(nn.Module):
         flow = None
         loss_distill = 0
         stu = [self.block0, self.block1, self.block2]
-        scale = [2, 2, 1]
         for i in range(3):
             if flow != None:
                 flow_d, mask_d = stu[i](torch.cat((img0, img1, warped_img0, warped_img1, mask), 1), flow,
