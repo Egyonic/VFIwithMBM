@@ -88,10 +88,10 @@ class IFBlock_bf_L(nn.Module):
             conv(c // 2, c, 3, 2, 1),
         )
         self.tf_conv = nn.Sequential(
-            conv(c, tf_dim, 3, 1, 1),
+            conv(c, tf_dim, 3, 2, 1),
         )
         self.tf_conv_revert = nn.Sequential(
-            conv(tf_dim, c, 3, 1, 1),
+            deconv(tf_dim, c, 3, 2, 1),
         )
         self.convblock = nn.Sequential(
             conv(c, c),
@@ -769,7 +769,6 @@ class IFNet_bf_resnet_cbam_L(nn.Module):
         flow = None
         loss_distill = 0
         stu = [self.block0, self.block1, self.block2]
-        scale = [2, 2, 1]
         for i in range(3):
             if flow != None:
                 flow_d, mask_d = stu[i](torch.cat((img0, img1, warped_img0, warped_img1, mask), 1), flow,
