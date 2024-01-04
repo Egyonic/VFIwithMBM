@@ -88,10 +88,10 @@ class IFBlock_bf_L(nn.Module):
             conv(c // 2, c, 3, 2, 1),
         )
         self.tf_conv = nn.Sequential(
-            conv(c, tf_dim, 3, 1, 1),
+            conv(c, tf_dim, 3, 2, 1),
         )
         self.tf_conv_revert = nn.Sequential(
-            conv(tf_dim, c, 3, 1, 1),
+            deconv(tf_dim, c, 3, 2, 1),
         )
         self.convblock = nn.Sequential(
             conv(c, c),
