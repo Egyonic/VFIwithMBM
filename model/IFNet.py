@@ -81,7 +81,7 @@ class IFBlock(nn.Module):
 
 
 class IFBlock_bf_L(nn.Module):
-    def __init__(self, in_planes, c=64, tf_dim=64):
+    def __init__(self, in_planes, c=64, tf_dim=64, n_win=7):
         super(IFBlock_bf_L, self).__init__()
         self.conv0 = nn.Sequential(
             conv(in_planes, c // 2, 3, 1, 1),
@@ -107,7 +107,7 @@ class IFBlock_bf_L(nn.Module):
         biformer_blocks = []
         for i in range(4):
             biformer_blocks.append(BiformerBlock(
-                dim=tf_dim, n_win=7, num_heads=4, kv_downsample_mode='identity', kv_per_win=-1,
+                dim=tf_dim, n_win=n_win, num_heads=4, kv_downsample_mode='identity', kv_per_win=-1,
                 topk=4, mlp_ratio=3, side_dwconv=5, before_attn_dwconv=3, layer_scale_init_value=-1,
                 qk_dim=tf_dim, param_routing=False, diff_routing=False, soft_routing=False, pre_norm=True))
         self.tf_block = nn.Sequential(*biformer_blocks)
@@ -128,6 +128,56 @@ class IFBlock_bf_L(nn.Module):
         flow = tmp[:, :4] * scale
         mask = tmp[:, 4:5]
         return flow, mask
+
+
+class IFBlock_bf_L_M(nn.Module):
+    def __init__(self, in_planes, c=64, tf_dim=64, n_win=7):
+        super(IFBlock_bf_L_M, self).__init__()
+        self.conv0 = nn.Sequential(
+            conv(in_planes, c // 2, 3, 1, 1),
+            conv(c // 2, c, 3, 2, 1),
+        )
+        self.tf_conv = nn.Sequential(
+            conv(c, tf_dim, 3, 2, 1),
+        )
+        self.tf_conv_revert = nn.Sequential(
+            deconv(tf_dim, c, 3, 2, 1),
+        )
+        self.convblock = nn.Sequential(
+            conv(c, c),
+            conv(c, c),
+            conv(c, c),
+            conv(c, c),
+            conv(c, c),
+            conv(c, c),
+            conv(c, c),
+            conv(c, c),
+        )
+        self.lastconv = nn.ConvTranspose2d(c, 5, 4, 2, 1)
+        biformer_blocks = []
+        for i in range(4):
+            biformer_blocks.append(BiformerBlock(
+                dim=tf_dim, n_win=n_win, num_heads=4, kv_downsample_mode='identity', kv_per_win=-1,
+                topk=4, mlp_ratio=3, side_dwconv=5, before_attn_dwconv=3, layer_scale_init_value=-1,
+                qk_dim=tf_dim, param_routing=False, diff_routing=False, soft_routing=False, pre_norm=True))
+        self.tf_block = nn.Sequential(*biformer_blocks)
+
+    def forward(self, x, flow, scale):
+        if scale != 1:
+            x = F.interpolate(x, scale_factor=1. / scale, mode="bilinear", align_corners=False)
+        if flow != None:
+            flow = F.interpolate(flow, scale_factor=1. / scale, mode="bilinear", align_corners=False) * 1. / scale
+            x = torch.cat((x, flow), 1)
+        x = self.conv0(x)
+        x = self.convblock(x) + x
+        y = self.tf_conv(x)
+        y = self.tf_block(y)
+        y = self.tf_conv_revert(y)
+        tmp = self.lastconv(x) + self.lastconv(y)
+        tmp = F.interpolate(tmp, scale_factor=scale, mode="bilinear", align_corners=False)
+        flow = tmp[:, :4] * scale
+        mask = tmp[:, 4:5]
+        return flow, mask, y
 
 
 class IFNet(nn.Module):
@@ -198,7 +248,7 @@ class IFBlock_bf(nn.Module):
     使用了 BiFormer Block 的IFBlock， 采用金字塔结构提取三层特征叠加
     """
 
-    def __init__(self, in_planes, c=64, tf_dim=64):
+    def __init__(self, in_planes, c=64, tf_dim=64, n_win=7):
         super(IFBlock_bf, self).__init__()
         self.conv0 = nn.Sequential(
             conv(in_planes, c // 2, 3, 2, 1),
@@ -224,7 +274,7 @@ class IFBlock_bf(nn.Module):
         biformer_blocks = []
         for i in range(4):
             biformer_blocks.append(BiformerBlock(
-                dim=tf_dim, n_win=7, num_heads=4, kv_downsample_mode='identity', kv_per_win=-1,
+                dim=tf_dim, n_win=n_win, num_heads=4, kv_downsample_mode='identity', kv_per_win=-1,
                 topk=4, mlp_ratio=3, side_dwconv=5, before_attn_dwconv=3, layer_scale_init_value=-1,
                 qk_dim=tf_dim, param_routing=False, diff_routing=False, soft_routing=False, pre_norm=True))
         self.tf_block = nn.Sequential(*biformer_blocks)
@@ -804,6 +854,73 @@ class IFNet_bf_resnet_cbam_L(nn.Module):
         c0 = self.contextnet(img0, flow[:, :2])
         c1 = self.contextnet(img1, flow[:, 2:4])
         tmp = self.unet(img0, img1, warped_img0, warped_img1, mask, flow, c0, c1)
+        res = tmp[:, :3] * 2 - 1
+        merged[2] = torch.clamp(merged[2] + res, 0, 1)
+        return flow_list, mask_list[2], merged, flow_teacher, merged_teacher, loss_distill
+
+
+class IFNet_bf_L_Unetff(nn.Module):
+    def __init__(self):
+        super(IFNet_bf_L_Unetff, self).__init__()
+        self.block0 = IFBlock_bf_L_M(6, c=360, tf_dim=192, n_win=8)
+        self.block1 = IFBlock_bf_L_M(13 + 4, c=225, tf_dim=192, n_win=8)
+        self.block2 = IFBlock_bf_L_M(13 + 4, c=135, tf_dim=128, n_win=8)
+        self.block_tea = IFBlock_bf_L_M(16 + 4, c=135, tf_dim=128, n_win=8)
+        self.contextnet = resnet50_feature_L()
+        self.unet = Unet_FF()
+
+    def forward(self, x, scale=[4, 2, 1], timestep=0.5):
+        img0 = x[:, :3]
+        img1 = x[:, 3:6]
+        gt = x[:, 6:]  # In inference time, gt is None
+        flow_list = []
+        merged = []
+        mask_list = []
+        mo_list = []
+        warped_img0 = img0
+        warped_img1 = img1
+        flow = None
+        loss_distill = 0
+        stu = [self.block0, self.block1, self.block2]
+        for i in range(3):
+            if flow != None:
+                flow_d, mask_d, m = stu[i](torch.cat((img0, img1, warped_img0, warped_img1, mask), 1), flow,
+                                           scale=scale[i])
+                flow = flow + flow_d
+                mask = mask + mask_d
+            else:
+                flow, mask, m = stu[i](torch.cat((img0, img1), 1), None, scale=scale[i])
+            mask_list.append(torch.sigmoid(mask))
+            flow_list.append(flow)
+            mo_list.append(m)
+            warped_img0 = warp(img0, flow[:, :2])
+            warped_img1 = warp(img1, flow[:, 2:4])
+            merged_student = (warped_img0, warped_img1)
+            merged.append(merged_student)
+        if gt.shape[1] == 3:
+            flow_d, mask_d, m_t = self.block_tea(torch.cat((img0, img1, warped_img0, warped_img1, mask, gt), 1), flow,
+                                            scale=1)
+            flow_teacher = flow + flow_d
+            warped_img0_teacher = warp(img0, flow_teacher[:, :2])
+            warped_img1_teacher = warp(img1, flow_teacher[:, 2:4])
+            mask_teacher = torch.sigmoid(mask + mask_d)
+            merged_teacher = warped_img0_teacher * mask_teacher + warped_img1_teacher * (1 - mask_teacher)
+        else:
+            flow_teacher = None
+            merged_teacher = None
+        for i in range(3):
+            merged[i] = merged[i][0] * mask_list[i] + merged[i][1] * (1 - mask_list[i])
+            if gt.shape[1] == 3:
+                loss_mask = ((merged[i] - gt).abs().mean(1, True) > (merged_teacher - gt).abs().mean(1,
+                                                                                                     True) + 0.01).float().detach()
+                loss_distill += (((flow_teacher.detach() - flow_list[i]) ** 2).mean(1, True) ** 0.5 * loss_mask).mean()
+
+        c0 = self.contextnet(img0, flow[:, :2])
+        c1 = self.contextnet(img1, flow[:, 2:4])
+        edge0 = sobel_edge_detection(img0)
+        edge1 = sobel_edge_detection(img1)
+        edge = torch.cat((edge0, edge1), 1)
+        tmp = self.unet(img0, img1, warped_img0, warped_img1, mask, flow, c0, c1, edge, mo_list)
         res = tmp[:, :3] * 2 - 1
         merged[2] = torch.clamp(merged[2] + res, 0, 1)
         return flow_list, mask_list[2], merged, flow_teacher, merged_teacher, loss_distill

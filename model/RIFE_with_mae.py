@@ -88,7 +88,7 @@ class Model:
         if rank == 0:
             torch.save(self.flownet.state_dict(), '{}/flownet_{}.pkl'.format(path, epoch))
             if hasattr(self, 'mae'):
-                torch.save(self.mae.state_dict(), '{}/mae_{}.pkl'.format(path, epoch))
+                torch.save(self.mae.state_dict(), '{}/mae_{}.checkpoint'.format(path, epoch))
 
     def inference(self, img0, img1, scale=1, scale_list=[4, 2, 1], TTA=False, timestep=0.5):
         for i in range(3):
@@ -131,7 +131,7 @@ class Model:
             self.eval()
         #start_time = time.time()
         with torch.no_grad():
-            flow, mask, merged, flow_teacher, merged_teacher, loss_distill, imgs_reconstructed, loss_reconstruct \
+            flow, mask, merged, flow_teacher, merged_teacher, loss_distill \
                 = self.flownet(torch.cat((imgs, gt), 1), scale=[4, 2, 1])
         #end_time = time.time()
         #print(f"flownet took {end_time - start_time} seconds.")
