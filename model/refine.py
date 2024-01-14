@@ -84,14 +84,17 @@ def sobel_edge_detection(image_tensor):
     sobel_x = torch.tensor([[1, 0, -1], [2, 0, -2], [1, 0, -1]], dtype=torch.float32)
     sobel_y = sobel_x.T
 
-    edge_r_x = F.conv2d(image_tensor[:, 0:1, :, :], sobel_x.unsqueeze(0).unsqueeze(0), padding=1)
-    edge_r_y = F.conv2d(image_tensor[:, 0:1, :, :], sobel_y.unsqueeze(0).unsqueeze(0), padding=1)
+    sobel_x = sobel_x.unsqueeze(0).unsqueeze(0).to(device)
+    sobel_y = sobel_y.unsqueeze(0).unsqueeze(0).to(device)
 
-    edge_g_x = F.conv2d(image_tensor[:, 1:2, :, :], sobel_x.unsqueeze(0).unsqueeze(0), padding=1)
-    edge_g_y = F.conv2d(image_tensor[:, 1:2, :, :], sobel_y.unsqueeze(0).unsqueeze(0), padding=1)
+    edge_r_x = F.conv2d(image_tensor[:, 0:1, :, :], sobel_x, padding=1)
+    edge_r_y = F.conv2d(image_tensor[:, 0:1, :, :], sobel_y, padding=1)
 
-    edge_b_x = F.conv2d(image_tensor[:, 2:3, :, :], sobel_x.unsqueeze(0).unsqueeze(0), padding=1)
-    edge_b_y = F.conv2d(image_tensor[:, 2:3, :, :], sobel_y.unsqueeze(0).unsqueeze(0), padding=1)
+    edge_g_x = F.conv2d(image_tensor[:, 1:2, :, :], sobel_x, padding=1)
+    edge_g_y = F.conv2d(image_tensor[:, 1:2, :, :], sobel_y, padding=1)
+
+    edge_b_x = F.conv2d(image_tensor[:, 2:3, :, :], sobel_x, padding=1)
+    edge_b_y = F.conv2d(image_tensor[:, 2:3, :, :], sobel_y, padding=1)
 
     edge_result = torch.cat([edge_r_x + edge_r_y, edge_g_x + edge_g_y, edge_b_x + edge_b_y], dim=1)
 
@@ -398,11 +401,11 @@ class Unet_FF(nn.Module):
         s0 = self.down0(torch.cat((img0, img1, warped_img0, warped_img1, mask, flow, edge), 1))
         s0 = s0 + self.cbam0(s0)
         s1 = self.down1(torch.cat((s0, c0[0], c1[0]), 1))  # W:256
-        s1 = s1 + self.cbam0(s1)
+        s1 = s1 + self.cbam1(s1)
         s2 = self.down2(torch.cat((s1, c0[1], c1[1], m2), 1))  # W:128
-        s2 = s2 + self.cbam0(s2)
+        s2 = s2 + self.cbam2(s2)
         s3 = self.down3(torch.cat((s2, c0[2], c1[2], m1), 1))  # W:64
-        s3 = s3 + self.cbam0(s3)
+        s3 = s3 + self.cbam3(s3)
 
         fa3 = self.fusion_3(torch.cat((self.h0_3(s0), self.h1_3(s1), self.h2_3(s2), self.h3_3(s3), f3, m0), 1))
         fa2 = self.fusion_2(torch.cat((self.h0_2(s0), self.h1_2(s1), self.h2_2(s2), self.h3_2(fa3)), 1))
