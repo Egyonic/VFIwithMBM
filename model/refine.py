@@ -416,6 +416,174 @@ class Unet_FF(nn.Module):
         return torch.sigmoid(x)
 
 
+class Unet_FF_M(nn.Module):
+    def __init__(self):
+        super(Unet_FF_M, self).__init__()
+        self.CatChannels = 4 * c
+        self.CatBlocks = 4
+        self.UpChannels = self.CatChannels * self.CatBlocks
+
+        self.down0 = Conv2(17 + 6, 2 * c, 1)
+        self.down1 = Conv2(4 * c + 2, 4 * c)
+        self.down2 = Conv2(8 * c + 2 + self.CatChannels, 8 * c)
+        self.down3 = Conv2(16 * c + 2 + self.CatChannels, 16 * c)
+
+        self.cbam0 = CBAM(channels=2 * c)
+        self.cbam1 = CBAM(channels=4 * c)
+        self.cbam2 = CBAM(channels=8 * c)
+        self.cbam3 = CBAM(channels=16 * c)
+
+        """全尺度融合部分"""
+        self.conv = nn.Conv2d(self.UpChannels, 3, 3, 1, 1)
+        self.h3_f = nn.Conv2d(256, self.CatChannels, 3, padding=1)
+        self.m0_f = nn.Conv2d(360, self.CatChannels, 3, padding=1)
+        self.m1_f = nn.Conv2d(225, self.CatChannels, 3, padding=1)
+        self.m2_f = nn.Conv2d(135, self.CatChannels, 3, padding=1)
+        # h0
+        self.h0_3 = nn.Sequential(
+            nn.MaxPool2d(8, 8, ceil_mode=True),
+            nn.Conv2d(2 * c, self.CatChannels, 3, padding=1),
+            nn.BatchNorm2d(self.CatChannels),
+            nn.PReLU(self.CatChannels)
+        )
+        self.h1_3 = nn.Sequential(
+            nn.MaxPool2d(4, 4, ceil_mode=True),
+            nn.Conv2d(4 * c, self.CatChannels, 3, padding=1),
+            nn.BatchNorm2d(self.CatChannels),
+            nn.PReLU(self.CatChannels)
+        )
+        self.h2_3 = nn.Sequential(
+            nn.MaxPool2d(2, 2, ceil_mode=True),
+            nn.Conv2d(8 * c, self.CatChannels, 3, padding=1),
+            nn.BatchNorm2d(self.CatChannels),
+            nn.PReLU(self.CatChannels)
+        )
+        self.h3_3 = nn.Sequential(
+            nn.Conv2d(16 * c, self.CatChannels, 3, padding=1),
+            nn.BatchNorm2d(self.CatChannels),
+            nn.PReLU(self.CatChannels)
+        )
+        # fusion 3
+        self.fusion_3 = nn.Sequential(
+            nn.Conv2d(self.UpChannels + self.CatChannels * 2, self.UpChannels, 3, padding=1),
+            nn.BatchNorm2d(self.UpChannels),
+            nn.PReLU(self.UpChannels)
+        )
+
+        # h1
+        self.h0_2 = nn.Sequential(
+            nn.MaxPool2d(4, 4, ceil_mode=True),
+            nn.Conv2d(2 * c, self.CatChannels, 3, padding=1),
+            nn.BatchNorm2d(self.CatChannels),
+            nn.PReLU(self.CatChannels)
+        )
+        self.h1_2 = nn.Sequential(
+            nn.MaxPool2d(2, 2, ceil_mode=True),
+            nn.Conv2d(4 * c, self.CatChannels, 3, padding=1),
+            nn.BatchNorm2d(self.CatChannels),
+            nn.PReLU(self.CatChannels)
+        )
+        self.h2_2 = nn.Sequential(
+            nn.Conv2d(8 * c, self.CatChannels, 3, padding=1),
+            nn.BatchNorm2d(self.CatChannels),
+            nn.PReLU(self.CatChannels)
+        )
+        self.h3_2 = nn.Sequential(
+            nn.Upsample(scale_factor=2, mode='bilinear'),
+            nn.Conv2d(self.UpChannels, self.CatChannels, 3, padding=1),
+            nn.BatchNorm2d(self.CatChannels),
+            nn.PReLU(self.CatChannels)
+        )
+        self.fusion_2 = nn.Sequential(
+            nn.Conv2d(self.UpChannels, self.UpChannels, 3, padding=1),
+            nn.BatchNorm2d(self.UpChannels),
+            nn.PReLU(self.UpChannels)
+        )
+
+        # h2
+        self.h0_1 = nn.Sequential(
+            nn.MaxPool2d(2, 2, ceil_mode=True),
+            nn.Conv2d(2 * c, self.CatChannels, 3, padding=1),
+            nn.BatchNorm2d(self.CatChannels),
+            nn.PReLU(self.CatChannels)
+        )
+        self.h1_1 = nn.Sequential(
+            nn.Conv2d(4 * c, self.CatChannels, 3, padding=1),
+            nn.BatchNorm2d(self.CatChannels),
+            nn.PReLU(self.CatChannels)
+        )
+        self.h2_1 = nn.Sequential(
+            nn.Upsample(scale_factor=2, mode='bilinear'),
+            nn.Conv2d(self.UpChannels, self.CatChannels, 3, padding=1),
+            nn.BatchNorm2d(self.CatChannels),
+            nn.PReLU(self.CatChannels)
+        )
+        self.h3_1 = nn.Sequential(
+            nn.Upsample(scale_factor=4, mode='bilinear'),
+            nn.Conv2d(self.UpChannels, self.CatChannels, 3, padding=1),
+            nn.BatchNorm2d(self.CatChannels),
+            nn.PReLU(self.CatChannels)
+        )
+        self.fusion_1 = nn.Sequential(
+            nn.Conv2d(self.UpChannels, self.UpChannels, 3, padding=1),
+            nn.BatchNorm2d(self.UpChannels),
+            nn.PReLU(self.UpChannels)
+        )
+
+        # h3
+        self.h0_0 = nn.Sequential(
+            nn.Conv2d(2 * c, self.CatChannels, 3, padding=1),
+            nn.BatchNorm2d(self.CatChannels),
+            nn.PReLU(self.CatChannels)
+        )
+        self.h1_0 = nn.Sequential(
+            nn.Upsample(scale_factor=2, mode='bilinear'),
+            nn.Conv2d(self.UpChannels, self.CatChannels, 3, padding=1),
+            nn.BatchNorm2d(self.CatChannels),
+            nn.PReLU(self.CatChannels)
+        )
+        self.h2_0 = nn.Sequential(
+            nn.Upsample(scale_factor=4, mode='bilinear'),
+            nn.Conv2d(self.UpChannels, self.CatChannels, 3, padding=1),
+            nn.BatchNorm2d(self.CatChannels),
+            nn.PReLU(self.CatChannels)
+        )
+        self.h3_0 = nn.Sequential(
+            nn.Upsample(scale_factor=8, mode='bilinear'),
+            nn.Conv2d(self.UpChannels, self.CatChannels, 3, padding=1),
+            nn.BatchNorm2d(self.CatChannels),
+            nn.PReLU(self.CatChannels)
+        )
+        self.fusion_0 = nn.Sequential(
+            nn.Conv2d(self.UpChannels, self.UpChannels, 3, padding=1),
+            nn.BatchNorm2d(self.UpChannels),
+            nn.PReLU(self.UpChannels)
+        )
+
+    def forward(self, img0, img1, warped_img0, warped_img1, mask, flow, c0, c1, edge, mo, guide_list):
+        m0 = self.m0_f(mo[0])
+        m1 = self.m1_f(mo[1])
+        m2 = self.m2_f(mo[2])
+        f3 = self.h3_f(torch.cat((c0[3], c1[3]), 1))
+        s0 = self.down0(torch.cat((img0, img1, warped_img0, warped_img1, mask, flow, edge), 1))
+        s0 = s0 + self.cbam0(s0)
+        s1 = self.down1(torch.cat((s0, guide_list[0], c0[0], c1[0]), 1))  # W:256
+        s1 = s1 + self.cbam1(s1)
+        s2 = self.down2(torch.cat((s1, guide_list[1], c0[1], c1[1], m2), 1))  # W:128
+        s2 = s2 + self.cbam2(s2)
+        s3 = self.down3(torch.cat((s2, guide_list[2], c0[2], c1[2], m1), 1))  # W:64
+        s3 = s3 + self.cbam3(s3)
+
+        fa3 = self.fusion_3(torch.cat((self.h0_3(s0), self.h1_3(s1), self.h2_3(s2), self.h3_3(s3), f3, m0), 1))
+        fa2 = self.fusion_2(torch.cat((self.h0_2(s0), self.h1_2(s1), self.h2_2(s2), self.h3_2(fa3)), 1))
+        fa1 = self.fusion_1(torch.cat((self.h0_1(s0), self.h1_1(s1), self.h2_1(fa2), self.h3_1(fa3)), 1))
+        fa0 = self.fusion_0(torch.cat((self.h0_0(s0), self.h1_0(fa1), self.h2_0(fa2), self.h3_0(fa3)), 1))
+
+        x = self.conv(fa0)
+        return torch.sigmoid(x)
+
+
+
 class UNetMAEViT(nn.Module):
     def __init__(self):
         super(UNetMAEViT, self).__init__()
