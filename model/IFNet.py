@@ -926,15 +926,15 @@ class IFNet_bf_L_Unetff(nn.Module):
         return flow_list, mask_list[2], merged, flow_teacher, merged_teacher, loss_distill
 
 
-class IFNet_bf_LM_Unetff(nn.Module):
+class IFNet_bf_LMD_Unetff(nn.Module):
     def __init__(self):
-        super(IFNet_bf_LM_Unetff, self).__init__()
-        self.block0 = IFBlock_bf_L_M(6, c=360, tf_dim=192, n_win=8)
-        self.block1 = IFBlock_bf_L_M(13 + 4, c=225, tf_dim=192, n_win=8)
-        self.block2 = IFBlock_bf_L_M(13 + 4, c=135, tf_dim=128, n_win=8)
-        self.block_tea = IFBlock_bf_L_M(16 + 4, c=135, tf_dim=128, n_win=8)
+        super(IFNet_bf_LMD_Unetff, self).__init__()
+        self.block0 = IFBlock_bf_L_M(6, c=360, tf_dim=192)
+        self.block1 = IFBlock_bf_L_M(13 + 4, c=225, tf_dim=192)
+        self.block2 = IFBlock_bf_L_M(13 + 4, c=135, tf_dim=128)
+        self.block_tea = IFBlock_bf_L_M(16 + 4, c=135, tf_dim=128)
         self.contextnet = resnet50_feature_L()
-        self.unet = Unet_FF()
+        self.unet = Unet_FF_M()
 
     def forward(self, x, scale=[4, 2, 1], timestep=0.5):
         img0 = x[:, :3]
@@ -992,13 +992,14 @@ class IFNet_bf_LM_Unetff(nn.Module):
             else:
                 ms = mask_list[i]
             m = get_rec_region(ms, 0.15, 0.85)
+            m = get_rec_patches(m)
             mask_guide.append(m)
         
         edge0 = sobel_edge_detection(img0)
         edge1 = sobel_edge_detection(img1)
         edge = torch.cat((edge0, edge1), 1)
 
-        tmp = self.unet(img0, img1, warped_img0, warped_img1, mask, flow, c0, c1, edge, mo_list)
+        tmp = self.unet(img0, img1, warped_img0, warped_img1, mask, flow, c0, c1, edge, mo_list, mask_guide)
         res = tmp[:, :3] * 2 - 1
         merged[2] = torch.clamp(merged[2] + res, 0, 1)
         return flow_list, mask_list[2], merged, flow_teacher, merged_teacher, loss_distill
@@ -1008,7 +1009,7 @@ class IFNet_bf_LM_Unetff(nn.Module):
 
 if __name__ == "__main__":
     # flownet = IFNet_bf_resnet_local_mae()
-    flownet = IFNet_bf_LM_Unetff()
+    flownet = IFNet_bf_LMD_Unetff()
     input = torch.rand(2, 9, 256, 256)
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # input_cuda = input.to("cpu")

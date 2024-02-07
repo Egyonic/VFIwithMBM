@@ -424,9 +424,9 @@ class Unet_FF_M(nn.Module):
         self.UpChannels = self.CatChannels * self.CatBlocks
 
         self.down0 = Conv2(17 + 6, 2 * c, 1)
-        self.down1 = Conv2(4 * c + 2, 4 * c)
-        self.down2 = Conv2(8 * c + 2 + self.CatChannels, 8 * c)
-        self.down3 = Conv2(16 * c + 2 + self.CatChannels, 16 * c)
+        self.down1 = Conv2(4 * c + 1, 4 * c)
+        self.down2 = Conv2(8 * c + 1 + self.CatChannels, 8 * c)
+        self.down3 = Conv2(16 * c + 1 + self.CatChannels, 16 * c)
 
         self.cbam0 = CBAM(channels=2 * c)
         self.cbam1 = CBAM(channels=4 * c)
