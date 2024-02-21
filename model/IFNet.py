@@ -158,7 +158,7 @@ class IFBlock_bf_L_M(nn.Module):
         for i in range(4):
             biformer_blocks.append(BiformerBlock(
                 dim=tf_dim, n_win=n_win, num_heads=4, kv_downsample_mode='identity', kv_per_win=-1,
-                topk=4, mlp_ratio=3, side_dwconv=5, before_attn_dwconv=3, layer_scale_init_value=-1,
+                topk=4, mlp_ratio=2, side_dwconv=5, before_attn_dwconv=3, layer_scale_init_value=-1,
                 qk_dim=tf_dim, param_routing=False, diff_routing=False, soft_routing=False, pre_norm=True))
         self.tf_block = nn.Sequential(*biformer_blocks)
 
