@@ -57,3 +57,28 @@ class LapLoss(torch.nn.Module):
         pyr_input  = laplacian_pyramid(img=input, kernel=self.gauss_kernel, max_levels=self.max_levels)
         pyr_target = laplacian_pyramid(img=target, kernel=self.gauss_kernel, max_levels=self.max_levels)
         return sum(torch.nn.functional.l1_loss(a, b) for a, b in zip(pyr_input, pyr_target))
+
+
+class MaskedLapLoss(torch.nn.Module):
+    def __init__(self, max_levels=5, channels=3):
+        super(MaskedLapLoss, self).__init__()
+        self.max_levels = max_levels
+        self.gauss_kernel = gauss_kernel(channels=channels)
+
+    def forward(self, input, target, mask):
+        # 构建拉普拉斯金字塔
+        pyr_input = laplacian_pyramid(img=input, kernel=self.gauss_kernel, max_levels=self.max_levels)
+        pyr_target = laplacian_pyramid(img=target, kernel=self.gauss_kernel, max_levels=self.max_levels)
+
+        # 使用掩码选择性地计算损失
+        masked_losses = [torch.nn.functional.l1_loss(a, b, reduction='none') * mask for a, b, mask in
+                         zip(pyr_input, pyr_target, mask)]
+
+        # 将损失张量与掩码相乘后的结果进行求和
+        masked_sum_loss = sum(masked_losses)
+
+        # 计算均值，只考虑掩码值为1的部分
+        num_masked_pixels = mask.sum()
+        mean_loss = masked_sum_loss.sum() / (num_masked_pixels + 1e-8)  # 避免零除错误
+
+        return mean_loss
