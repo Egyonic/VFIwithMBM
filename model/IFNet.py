@@ -992,7 +992,7 @@ class IFNet_bf_LMD_Unetff(nn.Module):
             else:
                 ms = mask_list[i]
             m = get_rec_region(ms, 0.15, 0.85)
-            m = get_rec_patches(m)
+            _ ,m = get_rec_patches(m)
             mask_guide.append(m)
         
         edge0 = sobel_edge_detection(img0)

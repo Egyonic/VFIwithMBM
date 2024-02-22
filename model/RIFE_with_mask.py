@@ -46,7 +46,7 @@ class Model:
         self.epe = EPE()
         self.lap = LapLoss()
         self.mask_lap = MaskedLapLoss()
-        self.sobel = MaskedSOBEL()
+        self.sobel = SOBEL()
         if local_rank != -1:
             self.flownet = DDP(self.flownet, device_ids=[local_rank], output_device=local_rank)
 
@@ -115,14 +115,14 @@ class Model:
             = self.flownet(torch.cat((imgs, gt), 1), scale=[4, 2, 1])
         loss_reconstruct = 0.0
         mask_rec = get_rec_region(mask, 0.15, 0.85)
-        mask_p = get_rec_patches(mask_rec)
+        _, mask_p = get_rec_patches(mask_rec, 8, 8)
         loss_l1 = (self.lap(merged[2], gt)).mean()
-        loss_l1_mask = (self.mask_lap(merged[2], gt, mask_p)).mean()
+        loss_l1_mask = (self.lap(merged[2] * mask_p, gt * mask_p)).mean()
         loss_tea = (self.lap(merged_teacher, gt)).mean()
-        loss_sobel = (self.sobel(merged_teacher, gt, mask_p)).mean()
+        loss_sobel = (self.sobel(merged[2] * mask_p, gt * mask_p)).mean()
         if training:
             self.optimG.zero_grad()
-            loss_G = loss_l1 + loss_tea + loss_l1_mask + loss_sobel * 0.5 + loss_distill * 0.01
+            loss_G = loss_l1 + loss_tea + loss_l1_mask * 0.5 + loss_sobel * 0.1 + loss_distill * 0.01
             loss_G.backward()
             self.optimG.step()
         else:
