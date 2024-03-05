@@ -8,11 +8,13 @@ import argparse
 import numpy as np
 from torch.nn import functional as F
 from model.pytorch_msssim import ssim_matlab
-from model.RIFE import Model
+from model.RIFE_with_mask import Model
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-model = Model()
-model.load_model('train_log')
+
+model_name = 'IFNet_bf_resnet_cbam_L'
+model = Model(model_name=model_name)
+model.load_model('train_log/IFNet_bf_resnet_cbam_L')
 model.eval()
 model.device()
 
