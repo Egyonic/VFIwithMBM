@@ -862,10 +862,10 @@ class IFNet_bf_resnet_cbam_L(nn.Module):
 class IFNet_bf_L_Unetff(nn.Module):
     def __init__(self):
         super(IFNet_bf_L_Unetff, self).__init__()
-        self.block0 = IFBlock_bf_L_M(6, c=360, tf_dim=192, n_win=8)
-        self.block1 = IFBlock_bf_L_M(13 + 4, c=225, tf_dim=192, n_win=8)
-        self.block2 = IFBlock_bf_L_M(13 + 4, c=135, tf_dim=128, n_win=8)
-        self.block_tea = IFBlock_bf_L_M(16 + 4, c=135, tf_dim=128, n_win=8)
+        self.block0 = IFBlock_bf_L_M(6, c=360, tf_dim=192)
+        self.block1 = IFBlock_bf_L_M(13 + 4, c=225, tf_dim=192)
+        self.block2 = IFBlock_bf_L_M(13 + 4, c=135, tf_dim=128)
+        self.block_tea = IFBlock_bf_L_M(16 + 4, c=135, tf_dim=128)
         self.contextnet = resnet50_feature_L()
         self.unet = Unet_FF()
 
