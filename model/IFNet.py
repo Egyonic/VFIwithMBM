@@ -109,7 +109,7 @@ class IFBlock_bf_L(nn.Module):
             biformer_blocks.append(BiformerBlock(
                 dim=tf_dim, n_win=n_win, num_heads=4, kv_downsample_mode='identity', kv_per_win=-1,
                 topk=4, mlp_ratio=3, side_dwconv=5, before_attn_dwconv=3, layer_scale_init_value=-1,
-                qk_dim=tf_dim, param_routing=False, diff_routing=False, soft_routing=False, pre_norm=True))
+                qk_dim=tf_dim, param_routing=False, diff_routing=False, soft_routing=False, pre_norm=True, auto_pad=True))
         self.tf_block = nn.Sequential(*biformer_blocks)
 
     def forward(self, x, flow, scale):
@@ -1004,6 +1004,84 @@ class IFNet_bf_LMD_Unetff(nn.Module):
         merged[2] = torch.clamp(merged[2] + res, 0, 1)
         return flow_list, mask_list[2], merged, flow_teacher, merged_teacher, loss_distill
 
+
+class IFNet_bf_LMD_Unetff(nn.Module):
+    def __init__(self):
+        super(IFNet_bf_LMD_Unetff, self).__init__()
+        self.block0 = IFBlock_bf_L_M(6, c=360, tf_dim=192)
+        self.block1 = IFBlock_bf_L_M(13 + 4, c=225, tf_dim=192)
+        self.block2 = IFBlock_bf_L_M(13 + 4, c=135, tf_dim=128)
+        self.block_tea = IFBlock_bf_L_M(16 + 4, c=135, tf_dim=128)
+        self.contextnet = resnet50_feature_L()
+        self.unet = Unet_FF_M()
+
+    def forward(self, x, scale=[4, 2, 1], timestep=0.5):
+        img0 = x[:, :3]
+        img1 = x[:, 3:6]
+        gt = x[:, 6:]  # In inference time, gt is None
+        flow_list = []
+        merged = []
+        mask_list = []
+        mo_list = []
+        warped_img0 = img0
+        warped_img1 = img1
+        flow = None
+        loss_distill = 0
+        stu = [self.block0, self.block1, self.block2]
+        for i in range(3):
+            if flow != None:
+                flow_d, mask_d, m = stu[i](torch.cat((img0, img1, warped_img0, warped_img1, mask), 1), flow,
+                                           scale=scale[i])
+                flow = flow + flow_d
+                mask = mask + mask_d
+            else:
+                flow, mask, m = stu[i](torch.cat((img0, img1), 1), None, scale=scale[i])
+            mask_list.append(torch.sigmoid(mask))
+            flow_list.append(flow)
+            mo_list.append(m)
+            warped_img0 = warp(img0, flow[:, :2])
+            warped_img1 = warp(img1, flow[:, 2:4])
+            merged_student = (warped_img0, warped_img1)
+            merged.append(merged_student)
+        if gt.shape[1] == 3:
+            flow_d, mask_d, m_t = self.block_tea(torch.cat((img0, img1, warped_img0, warped_img1, mask, gt), 1), flow,
+                                                 scale=1)
+            flow_teacher = flow + flow_d
+            warped_img0_teacher = warp(img0, flow_teacher[:, :2])
+            warped_img1_teacher = warp(img1, flow_teacher[:, 2:4])
+            mask_teacher = torch.sigmoid(mask + mask_d)
+            merged_teacher = warped_img0_teacher * mask_teacher + warped_img1_teacher * (1 - mask_teacher)
+        else:
+            flow_teacher = None
+            merged_teacher = None
+        for i in range(3):
+            merged[i] = merged[i][0] * mask_list[i] + merged[i][1] * (1 - mask_list[i])
+            if gt.shape[1] == 3:
+                loss_mask = ((merged[i] - gt).abs().mean(1, True) > (merged_teacher - gt).abs().mean(1,
+                                                                                                     True) + 0.01).float().detach()
+                loss_distill += (((flow_teacher.detach() - flow_list[i]) ** 2).mean(1, True) ** 0.5 * loss_mask).mean()
+
+        c0 = self.contextnet(img0, flow[:, :2])
+        c1 = self.contextnet(img1, flow[:, 2:4])
+        mask_guide = []
+        for i in range(3):
+            scale_factor = 2 ** i
+            if scale_factor > 1:
+                ms = F.avg_pool2d(mask_list[i], kernel_size=scale_factor, stride=scale_factor)
+            else:
+                ms = mask_list[i]
+            m = get_rec_region(ms, 0.15, 0.85)
+            _, m = get_rec_patches(m)
+            mask_guide.append(m)
+
+        edge0 = sobel_edge_detection(img0)
+        edge1 = sobel_edge_detection(img1)
+        edge = torch.cat((edge0, edge1), 1)
+
+        tmp = self.unet(img0, img1, warped_img0, warped_img1, mask, flow, c0, c1, edge, mo_list, mask_guide)
+        res = tmp[:, :3] * 2 - 1
+        merged[2] = torch.clamp(merged[2] + res, 0, 1)
+        return flow_list, mask_list[2], merged, flow_teacher, merged_teacher, loss_distill
 
 # test net
 
