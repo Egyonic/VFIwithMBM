@@ -8,6 +8,7 @@ import torch.optim as optim
 import itertools
 from PIL import Image
 import matplotlib.pyplot as plt
+import functools
 
 from model.lomar.models_lomar import MaskedAutoencoderViT, mae_vit_base_patch16
 from model.lomar.models_vit import vit_base_patch16_decoder
@@ -240,6 +241,166 @@ class UnetCBAM_L(nn.Module):
         s2 = self.down2(torch.cat((s1, c0[1], c1[1]), 1))
         s2 = self.cbam2(s2) + s2
         s3 = self.down3(torch.cat((s2, c0[2], c1[2]), 1))
+        s3 = self.cbam3(s3) + s3
+        x = self.up0(torch.cat((s3, c0[3], c1[3]), 1))
+        x = self.up1(torch.cat((x, s2), 1))
+        x = self.up2(torch.cat((x, s1), 1))
+        x = self.up3(torch.cat((x, s0), 1))
+        x = self.conv(x)
+        return torch.sigmoid(x)
+
+
+class GBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, activation=None):
+        super(GBlock, self).__init__()
+
+        self.in_channels, self.out_channels = in_channels, out_channels
+        self.activation = nn.PReLU()
+        # upsample layers
+        self.upsample = functools.partial(F.interpolate, scale_factor=2)
+        # Conv layers
+        self.conv1 = nn.Conv2d(in_channels, out_channels, 3, padding=1)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, 3, padding=1)
+        self.learnable_sc = in_channels != out_channels or self.upsample
+        if self.learnable_sc:
+            self.conv_sc = nn.Conv2d(in_channels, out_channels,
+                                           kernel_size=1, padding=0)
+        # Batchnorm layers
+        self.bn1 = nn.BatchNorm2d(in_channels)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+
+    def forward(self, x):
+        h = self.activation(self.bn1(x))
+        if self.upsample:
+            h = self.upsample(h)
+            x = self.upsample(x)
+        h = self.conv1(h)
+        h = self.activation(self.bn2(h))
+        h = self.conv2(h)
+        if self.learnable_sc:
+            x = self.conv_sc(x)
+        return h + x
+
+
+class DBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, which_conv=nn.Conv2d, wide=True,
+                 preactivation=False, down=True):
+        super(DBlock, self).__init__()
+        self.in_channels, self.out_channels = in_channels, out_channels
+        self.down = down  # if downsample
+        # If using wide D (as in SA-GAN and BigGAN), change the channel pattern
+        self.hidden_channels = self.out_channels if wide else self.in_channels
+        self.which_conv = which_conv
+        self.preactivation = preactivation
+        self.activation = nn.PReLU()
+        self.downsample = nn.AvgPool2d(2)
+
+        # Conv layers
+        self.conv1 = nn.Conv2d(self.in_channels, self.hidden_channels, 3, padding=1)
+        self.conv2 = nn.Conv2d(self.hidden_channels, self.out_channels,3, padding=1)
+        self.learnable_sc = True if (in_channels != out_channels) or self.downsample else False
+        if self.learnable_sc:
+            self.conv_sc = self.which_conv(in_channels, out_channels,
+                                           kernel_size=1, padding=0)
+
+    def shortcut(self, x):
+        if self.preactivation:
+            if self.learnable_sc:
+                x = self.conv_sc(x)
+            if self.downsample:
+                x = self.downsample(x)
+        else:
+            if self.down:
+                x = self.downsample(x)
+            if self.learnable_sc:
+                x = self.conv_sc(x)
+        return x
+
+    def forward(self, x):
+        if self.preactivation:
+            # h = self.activation(x) # NOT TODAY SATAN
+            # Andy's note: This line *must* be an out-of-place ReLU or it
+            #              will negatively affect the shortcut connection.
+            h = F.relu(x)
+        else:
+            h = x
+        h = self.conv1(h)
+        h = self.conv2(self.activation(h))
+        if self.down:
+            h = self.downsample(h)
+
+        return h + self.shortcut(x)
+
+
+class UnetCBAM_L_Res(nn.Module):
+    """
+    用于Larger模型，使用了CBAM, 使用Residual模块替代普通的卷积块
+    """
+    def __init__(self):
+        super(UnetCBAM_L_Res, self).__init__()
+        self.down0 = DBlock(17, 2 * c, down=False)
+        self.down1 = DBlock(4 * c, 4 * c)
+        self.down2 = DBlock(8 * c, 8 * c)
+        self.down3 = DBlock(16 * c, 16 * c)
+
+        self.cbam0 = CBAM(channels=2 * c)
+        self.cbam1 = CBAM(channels=4 * c)
+        self.cbam2 = CBAM(channels=8 * c)
+        self.cbam3 = CBAM(channels=16 * c)
+
+        self.up0 = GBlock(32 * c, 8 * c)
+        self.up1 = GBlock(16 * c, 4 * c)
+        self.up2 = GBlock(8 * c, 2 * c)
+        self.up3 = GBlock(4 * c, c)
+        self.conv = nn.Conv2d(c, 3, 3, 2, 1)
+
+    def forward(self, img0, img1, warped_img0, warped_img1, mask, flow, c0, c1):
+        s0 = self.down0(torch.cat((img0, img1, warped_img0, warped_img1, mask, flow), 1))
+        s0 = self.cbam0(s0) + s0
+        s1 = self.down1(torch.cat((s0, c0[0], c1[0]), 1))
+        s1 = self.cbam1(s1) + s1
+        s2 = self.down2(torch.cat((s1, c0[1], c1[1]), 1))
+        s2 = self.cbam2(s2) + s2
+        s3 = self.down3(torch.cat((s2, c0[2], c1[2]), 1))
+        s3 = self.cbam3(s3) + s3
+        x = self.up0(torch.cat((s3, c0[3], c1[3]), 1))
+        x = self.up1(torch.cat((x, s2), 1))
+        x = self.up2(torch.cat((x, s1), 1))
+        x = self.up3(torch.cat((x, s0), 1))
+        x = self.conv(x)
+        return torch.sigmoid(x)
+
+
+class UnetCBAM_L_M_pmask(nn.Module):
+    """
+    用于Large版本的模型，使用了CBAM， patch mask， 运动信息
+    """
+    def __init__(self):
+        super(UnetCBAM_L, self).__init__()
+        self.down0 = Conv2(17, 2 * c, 1)
+        self.down1 = Conv2(4 * c, 4 * c)
+        self.down2 = Conv2(8 * c, 8 * c)
+        self.down3 = Conv2(16 * c, 16 * c)
+
+        self.cbam0 = CBAM(channels=2 * c)
+        self.cbam1 = CBAM(channels=4 * c)
+        self.cbam2 = CBAM(channels=8 * c)
+        self.cbam3 = CBAM(channels=16 * c)
+
+        self.up0 = deconv(32 * c, 8 * c)
+        self.up1 = deconv(16 * c, 4 * c)
+        self.up2 = deconv(8 * c, 2 * c)
+        self.up3 = deconv(4 * c, c)
+        self.conv = nn.Conv2d(c, 3, 3, 2, 1)
+
+    def forward(self, img0, img1, warped_img0, warped_img1, mask, flow, c0, c1, edge, mo, guide_list):
+        s0 = self.down0(torch.cat((img0, img1, warped_img0, warped_img1, mask, flow), 1))
+        s0 = self.cbam0(s0) + s0
+        s1 = self.down1(torch.cat((guide_list[0], s0, c0[0], c1[0], ), 1))
+        s1 = self.cbam1(s1) + s1
+        s2 = self.down2(torch.cat((guide_list[0], s1, c0[1], c1[1]), 1))
+        s2 = self.cbam2(s2) + s2
+        s3 = self.down3(torch.cat((guide_list[0], s2, c0[2], c1[2]), 1))
         s3 = self.cbam3(s3) + s3
         x = self.up0(torch.cat((s3, c0[3], c1[3]), 1))
         x = self.up1(torch.cat((x, s2), 1))

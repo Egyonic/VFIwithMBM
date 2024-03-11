@@ -859,6 +859,68 @@ class IFNet_bf_resnet_cbam_L(nn.Module):
         return flow_list, mask_list[2], merged, flow_teacher, merged_teacher, loss_distill
 
 
+class IFNet_bf_resnet_cbam_L_res(nn.Module):
+    def __init__(self):
+        super(IFNet_bf_resnet_cbam_L_res, self).__init__()
+        self.block0 = IFBlock_bf_L(6, c=360, tf_dim=128)
+        self.block1 = IFBlock_bf_L(13 + 4, c=225, tf_dim=128)
+        self.block2 = IFBlock_bf_L(13 + 4, c=135, tf_dim=256)
+        self.block_tea = IFBlock_bf_L(16 + 4, c=135, tf_dim=256)
+        self.contextnet = resnet50_feature_L()
+        self.unet = UnetCBAM_L_Res()
+
+    def forward(self, x, scale=[4, 2, 1], timestep=0.5):
+        img0 = x[:, :3]
+        img1 = x[:, 3:6]
+        gt = x[:, 6:]  # In inference time, gt is None
+        flow_list = []
+        merged = []
+        mask_list = []
+        warped_img0 = img0
+        warped_img1 = img1
+        flow = None
+        loss_distill = 0
+        stu = [self.block0, self.block1, self.block2]
+        for i in range(3):
+            if flow != None:
+                flow_d, mask_d = stu[i](torch.cat((img0, img1, warped_img0, warped_img1, mask), 1), flow,
+                                        scale=scale[i])
+                flow = flow + flow_d
+                mask = mask + mask_d
+            else:
+                flow, mask = stu[i](torch.cat((img0, img1), 1), None, scale=scale[i])
+            mask_list.append(torch.sigmoid(mask))
+            flow_list.append(flow)
+            warped_img0 = warp(img0, flow[:, :2])
+            warped_img1 = warp(img1, flow[:, 2:4])
+            merged_student = (warped_img0, warped_img1)
+            merged.append(merged_student)
+        if gt.shape[1] == 3:
+            flow_d, mask_d = self.block_tea(torch.cat((img0, img1, warped_img0, warped_img1, mask, gt), 1), flow,
+                                            scale=1)
+            flow_teacher = flow + flow_d
+            warped_img0_teacher = warp(img0, flow_teacher[:, :2])
+            warped_img1_teacher = warp(img1, flow_teacher[:, 2:4])
+            mask_teacher = torch.sigmoid(mask + mask_d)
+            merged_teacher = warped_img0_teacher * mask_teacher + warped_img1_teacher * (1 - mask_teacher)
+        else:
+            flow_teacher = None
+            merged_teacher = None
+        for i in range(3):
+            merged[i] = merged[i][0] * mask_list[i] + merged[i][1] * (1 - mask_list[i])
+            if gt.shape[1] == 3:
+                loss_mask = ((merged[i] - gt).abs().mean(1, True) > (merged_teacher - gt).abs().mean(1,
+                                                                                                     True) + 0.01).float().detach()
+                loss_distill += (((flow_teacher.detach() - flow_list[i]) ** 2).mean(1, True) ** 0.5 * loss_mask).mean()
+
+        c0 = self.contextnet(img0, flow[:, :2])
+        c1 = self.contextnet(img1, flow[:, 2:4])
+        tmp = self.unet(img0, img1, warped_img0, warped_img1, mask, flow, c0, c1)
+        res = tmp[:, :3] * 2 - 1
+        merged[2] = torch.clamp(merged[2] + res, 0, 1)
+        return flow_list, mask_list[2], merged, flow_teacher, merged_teacher, loss_distill
+
+
 class IFNet_bf_L_Unetff(nn.Module):
     def __init__(self):
         super(IFNet_bf_L_Unetff, self).__init__()
@@ -1087,9 +1149,10 @@ class IFNet_bf_LMD_Unetff(nn.Module):
 
 if __name__ == "__main__":
     # flownet = IFNet_bf_resnet_local_mae()
-    flownet = IFNet_bf_LMD_Unetff()
-    input = torch.rand(2, 9, 256, 256)
-    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # input_cuda = input.to("cpu")
-    output = flownet(input, scale=[4, 2, 1])
+    flownet = IFNet_bf_resnet_cbam_L_res()
+    input = torch.rand(2, 9, 224, 224)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    flownet.to(device)
+    input_cuda = input.to(device)
+    output = flownet(input_cuda, scale=[4, 2, 1])
     print('finish')
