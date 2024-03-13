@@ -54,6 +54,8 @@ def train(model, local_rank, args):
     args.step_per_epoch = train_data.__len__()
     dataset_val = VimeoDataset('validation', small_dataset=args.small_dataset)
     val_data = DataLoader(dataset_val, batch_size=args.batch_size, pin_memory=True, num_workers=8)
+    if args.weight_path is not None:
+        step = train_data.__len__() * args.start_epoch # 修正继续训练时的step，影响lr
     print('training...')
     time_stamp = time.time()
     for epoch in range(args.start_epoch, args.epoch):
