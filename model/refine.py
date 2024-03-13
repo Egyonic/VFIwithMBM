@@ -332,6 +332,30 @@ class DBlock(nn.Module):
         return h + self.shortcut(x)
 
 
+class UnetCBAM_Res(nn.Module):
+    """
+    用于base模型，使用了CBAM, 使用Residual模块替代普通的卷积块
+    """
+    def __init__(self):
+        super(UnetCBAM_L_Res, self).__init__()
+        self.down0 = DBlock(17, 2 * c)
+        self.down1 = DBlock(4 * c, 4 * c)
+        self.down2 = DBlock(8 * c, 8 * c)
+        self.down3 = DBlock(16 * c, 16 * c)
+
+        self.cbam0 = CBAM(channels=2 * c)
+        self.cbam1 = CBAM(channels=4 * c)
+        self.cbam2 = CBAM(channels=8 * c)
+        self.cbam3 = CBAM(channels=16 * c)
+
+        self.up0 = GBlock(32 * c, 8 * c)
+        self.up1 = GBlock(16 * c, 4 * c)
+        self.up2 = GBlock(8 * c, 2 * c)
+        self.up3 = GBlock(4 * c, c)
+        self.conv = nn.Conv2d(c, 3, 3, 1, 1)
+
+
+
 class UnetCBAM_L_Res(nn.Module):
     """
     用于Larger模型，使用了CBAM, 使用Residual模块替代普通的卷积块
