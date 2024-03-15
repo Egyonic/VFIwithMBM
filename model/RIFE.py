@@ -82,7 +82,7 @@ class Model:
             state_dict = torch.load('{}/flownet.pkl'.format(path))
             if "mae" in state_dict and not hasattr(self.flownet, "mae"):
                 state_dict.pop("mae")
-            self.flownet.load_state_dict(convert(state_dict), strict=False)
+            self.flownet.load_state_dict(convert(state_dict), strict=True)
             #self.flownet.load_state_dict(torch.load('{}/flownet.pkl'.format(path)))
             #self.flownet.load_state_dict(convert(torch.load('{}/flownet.pkl'.format(path))))
 
