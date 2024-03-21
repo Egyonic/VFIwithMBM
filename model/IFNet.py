@@ -283,6 +283,8 @@ class IFBlock_bf_H_L(nn.Module):
         y = self.tf_conv(x)
         y = self.tf_block(y)
         y = self.tf_conv_revert(y)
+        if y.shape[2] > x.shape[2]:
+            y = y[:, :, :x.shape[2], :]
         tmp = self.lastconv(x) + self.lastconv(y)
         tmp = F.interpolate(tmp, scale_factor=scale * 2, mode="bilinear", align_corners=False)
         flow = tmp[:, :4] * scale
@@ -1390,6 +1392,7 @@ class IFNet_bf_resnet_cbam_HM_Res_L(nn.Module):
         hybs = []
         for i in range(3):
             hyb = self.hc[i](hybrid_list[i])
+            hyb = F.interpolate(hyb, scale_factor=2, mode="bilinear", align_corners=False)
             hybs.append(hyb)
         mask_guide = []
         # 获得多尺度patch mask
