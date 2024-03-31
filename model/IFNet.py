@@ -1412,10 +1412,10 @@ class IFNet_bf_resnet_cbam_HM_L(nn.Module):
 class IFNet_bf_resnet_cbam_HM_Res_L(nn.Module):
     def __init__(self):
         super(IFNet_bf_resnet_cbam_HM_Res_L, self).__init__()
-        self.block0 = IFBlock_bf_H_L(6, c=360, tf_dim=128)
-        self.block1 = IFBlock_bf_H_L(13 + 4, c=225, tf_dim=128)
-        self.block2 = IFBlock_bf_H_L(13 + 4, c=135, tf_dim=192)
-        self.block_tea = IFBlock_bf_H_L(16 + 4, c=135, tf_dim=192)
+        self.block0 = IFBlock_bf_H_L(6, c=360, tf_dim=64, n_block=6)
+        self.block1 = IFBlock_bf_H_L(13 + 4, c=225, tf_dim=128, n_block=6)
+        self.block2 = IFBlock_bf_H_L(13 + 4, c=135, tf_dim=192, n_block=6)
+        self.block_tea = IFBlock_bf_H_L(16 + 4, c=135, tf_dim=128, n_block=6)
         self.contextnet = resnet50_feature_L()
         self.unet = UnetCBAM_MH_Res_L()
         self.hc0 = conv(360, 64, 3, 1, 1)
