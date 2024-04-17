@@ -21,6 +21,15 @@ device = torch.device("cuda")
 log_path = 'train_log'
 max_psnr = 0.0
 
+psnr_file_path = 'max_psnr.txt'
+try:
+    with open(psnr_file_path, 'r') as file:
+        max_psnr = float(file.read().strip())
+        print("Loaded max_psnr from file:", max_psnr)
+except FileNotFoundError:
+    print("max_psnr file not found, initializing to default value.")
+    max_psnr = 0.0
+
 def get_learning_rate(step):
     if step < 2000:
         mul = step / 2000.
@@ -145,6 +154,9 @@ def evaluate(model, val_data, nr_eval, local_rank, writer_val):
     if np.array(psnr_list).mean() > max_psnr:
         max_psnr = np.array(psnr_list).mean()
         model.save_model(log_path, 'best', local_rank)
+        with open(psnr_file_path, 'w') as f:
+            f.write(str(max_psnr))
+            print("max_psnr saved to file.")
     writer_val.add_scalar('psnr_teacher', np.array(psnr_list_teacher).mean(), nr_eval)
         
 if __name__ == "__main__":    
