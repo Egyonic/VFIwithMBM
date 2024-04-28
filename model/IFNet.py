@@ -138,7 +138,7 @@ class IFBlock_bf(nn.Module):
 
 
 class IFBlock_bf_L(nn.Module):
-    def __init__(self, in_planes, c=64, tf_dim=64, n_win=7):
+    def __init__(self, in_planes, c=64, tf_dim=64, n_win=7, n_block=4):
         super(IFBlock_bf_L, self).__init__()
         self.conv0 = nn.Sequential(
             conv(in_planes, c // 2, 3, 1, 1),
@@ -162,7 +162,7 @@ class IFBlock_bf_L(nn.Module):
         )
         self.lastconv = nn.ConvTranspose2d(c, 5, 4, 2, 1)
         biformer_blocks = []
-        for i in range(4):
+        for i in range(n_block):
             biformer_blocks.append(BiformerBlock(
                 dim=tf_dim, n_win=n_win, num_heads=4, kv_downsample_mode='identity', kv_per_win=-1,
                 topk=4, mlp_ratio=3, side_dwconv=5, before_attn_dwconv=3, layer_scale_init_value=-1,
@@ -216,7 +216,7 @@ class IFBlock_bf_H(nn.Module):
         for i in range(4):
             biformer_blocks.append(BiformerBlock(
                 dim=tf_dim, n_win=n_win, num_heads=4, kv_downsample_mode='identity', kv_per_win=-1,
-                topk=4, mlp_ratio=2, side_dwconv=5, before_attn_dwconv=3, layer_scale_init_value=-1,
+                topk=4, mlp_ratio=3, side_dwconv=5, before_attn_dwconv=3, layer_scale_init_value=-1,
                 qk_dim=tf_dim, param_routing=False, diff_routing=False, soft_routing=False, pre_norm=True,
                 auto_pad=True))
         self.tf_block = nn.Sequential(*biformer_blocks)
