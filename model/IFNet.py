@@ -189,7 +189,7 @@ class IFBlock_bf_L(nn.Module):
 
 
 class IFBlock_bf_H(nn.Module):
-    def __init__(self, in_planes, c=64, tf_dim=64, n_win=7):
+    def __init__(self, in_planes, c=64, tf_dim=64, n_win=7, n_block=4):
         super(IFBlock_bf_H, self).__init__()
         self.conv0 = nn.Sequential(
             conv(in_planes, c // 2, 3, 2, 1),
@@ -215,7 +215,7 @@ class IFBlock_bf_H(nn.Module):
         biformer_blocks = []
         for i in range(4):
             biformer_blocks.append(BiformerBlock(
-                dim=tf_dim, n_win=n_win, num_heads=4, kv_downsample_mode='identity', kv_per_win=-1,
+                dim=tf_dim, n_win=n_win, num_heads=4, kv_downsample_mode='ada_avgpool', kv_per_win=4,
                 topk=4, mlp_ratio=3, side_dwconv=5, before_attn_dwconv=3, layer_scale_init_value=-1,
                 qk_dim=tf_dim, param_routing=False, diff_routing=False, soft_routing=False, pre_norm=True,
                 auto_pad=True))
@@ -1299,10 +1299,10 @@ class IFNet_bf_resnet_cbam_M_Res(nn.Module):
 class IFNet_bf_resnet_cbam_HM(nn.Module):
     def __init__(self):
         super(IFNet_bf_resnet_cbam_HM, self).__init__()
-        self.block0 = IFBlock_bf_H(6, c=240, tf_dim=64)
-        self.block1 = IFBlock_bf_H(13 + 4, c=150, tf_dim=64)
-        self.block2 = IFBlock_bf_H(13 + 4, c=90, tf_dim=128)
-        self.block_tea = IFBlock_bf_H(16 + 4, c=90, tf_dim=128)
+        self.block0 = IFBlock_bf_H(6, c=240, tf_dim=192, n_block=6)
+        self.block1 = IFBlock_bf_H(13 + 4, c=150, tf_dim=128, n_block=6)
+        self.block2 = IFBlock_bf_H(13 + 4, c=90, tf_dim=128, n_block=6)
+        self.block_tea = IFBlock_bf_H(16 + 4, c=90, tf_dim=128, n_block=4)
         self.contextnet = resnet50_feature()
         self.unet = UnetCBAM_MH()
         self.hc0 = conv(240, 64, 3, 1, 1)
