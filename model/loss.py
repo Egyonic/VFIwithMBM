@@ -153,9 +153,68 @@ class VGGPerceptualLoss(torch.nn.Module):
                 k += 1
         return loss
 
+
+class VGGPerceptualLossWithMask(nn.Module):
+    def __init__(self, rank=0):
+        super(VGGPerceptualLossWithMask, self).__init__()
+        self.vgg_pretrained_features = models.vgg19(pretrained=True).features.cuda().eval()
+        self.normalize = nn.InstanceNorm2d(3, affine=False)
+        for param in self.parameters():
+            param.requires_grad = False
+
+    def forward(self, X, Y, mask):
+        X = self.normalize(X) * mask # 先使用mask得到部分
+        Y = self.normalize(Y) * mask
+        num_ones = torch.sum(mask == 1).item()
+        num_zeros = torch.sum(mask == 0).item()
+        ratio = float(num_ones + num_zeros) / num_ones
+        indices = [2, 7, 12, 21, 30]
+        weights = [1.0 / 2.6, 1.0 / 4.8, 1.0 / 3.7, 1.0 / 5.6, 10 / 1.5]
+        k = 0
+        loss = 0
+        for i in range(indices[-1]):
+            X = self.vgg_pretrained_features[i](X)
+            Y = self.vgg_pretrained_features[i](Y)
+            if (i + 1) in indices:
+                # 只计算 mask 为 1 的部分
+                loss += weights[k] * (X - Y.detach()).abs().mean() * 0.1
+                k += 1
+        return loss * ratio
+
+    """
+    def forward(self, X, Y, mask):
+        X = self.normalize(X) * mask # 先使用mask得到部分
+        Y = self.normalize(Y) * mask
+        indices = [2, 7, 12, 21, 30]
+        weights = [1.0 / 2.6, 1.0 / 4.8, 1.0 / 3.7, 1.0 / 5.6, 10 / 1.5]
+        loss = 0
+        for i in range(X.size(0)):  # 遍历每个样本
+            num_ones = torch.sum(mask[i] == 1).item()  # 计算当前样本中 mask 中值为 1 的数量
+            num_zeros = torch.sum(mask[i] == 0).item()  # 计算当前样本中 mask 中值为 0 的数量
+            ratio = float(num_ones + num_zeros) / num_ones  # 计算当前样本的 ratio
+            k = 0
+            for j in range(len(indices)):
+                X_feat = self.vgg_pretrained_features[indices[j]](X[i:i+1])  # 提取特征
+                Y_feat = self.vgg_pretrained_features[indices[j]](Y[i:i+1])  # 提取特征
+                loss += weights[k] * (X_feat - Y_feat.detach()).abs().mean() * 0.1 * ratio  # 计算损失并应用当前样本的 ratio
+                k += 1
+        return loss
+    """
+
+
+
 if __name__ == '__main__':
     img0 = torch.zeros(3, 3, 256, 256).float().to(device)
     img1 = torch.tensor(np.random.normal(
         0, 1, (3, 3, 256, 256))).float().to(device)
-    ternary_loss = Ternary()
-    print(ternary_loss(img0, img1).shape)
+    # ternary_loss = Ternary()
+    # print(ternary_loss(img0, img1).shape)
+    x = torch.randn(4, 3, 256, 256)  # 生成图像
+    y = torch.randn(4, 3, 256, 256)  # 目标图像
+    mask = torch.randint(0, 2, (4, 1, 256, 256)).float()  # 随机生成 mask
+    x = x.to(device)
+    y = y.to(device)
+    mask = mask.to(device)
+    vgg_loss = VGGPerceptualLossWithMask()
+    loss = vgg_loss(x, y, mask)
+    print(loss.item())
