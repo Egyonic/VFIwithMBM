@@ -39,6 +39,8 @@ class Model:
             self.flownet = IFNet_bf_resnet_cbam_HM_Res()
         elif model_name == 'IFNet_bf_resnet_cbam_HM_Res_L':
             self.flownet = IFNet_bf_resnet_cbam_HM_Res_L()
+        elif model_name == 'IFNet_bf_resnet_cbam_HM_Res_L_v2':
+            self.flownet = IFNet_bf_resnet_cbam_HM_Res_L_v2()
         elif model_name == 'IFNet_bf_resnet_cbam_L_res':
             self.flownet = IFNet_bf_resnet_cbam_L_res()
         elif model_name == 'IFNet_bf_L_Unetff':
