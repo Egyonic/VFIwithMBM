@@ -213,10 +213,62 @@ class IFBlock_bf_H(nn.Module):
         )
         self.lastconv = nn.ConvTranspose2d(c, 5, 4, 2, 1)
         biformer_blocks = []
-        for i in range(4):
+        for i in range(n_block):
             biformer_blocks.append(BiformerBlock(
                 dim=tf_dim, n_win=n_win, num_heads=4, kv_downsample_mode='ada_avgpool', kv_per_win=4,
                 topk=4, mlp_ratio=3, side_dwconv=5, before_attn_dwconv=3, layer_scale_init_value=-1,
+                qk_dim=tf_dim, param_routing=False, diff_routing=False, soft_routing=False, pre_norm=True,
+                auto_pad=True))
+        self.tf_block = nn.Sequential(*biformer_blocks)
+
+    def forward(self, x, flow, scale):
+        if scale != 1:
+            x = F.interpolate(x, scale_factor=1. / scale, mode="bilinear", align_corners=False)
+        if flow != None:
+            flow = F.interpolate(flow, scale_factor=1. / scale, mode="bilinear", align_corners=False) * 1. / scale
+            x = torch.cat((x, flow), 1)
+        x = self.conv0(x)
+        x = self.convblock(x) + x
+        y = self.tf_conv(x)
+        y = self.tf_block(y)
+        y = self.tf_conv_revert(y)
+        tmp = self.lastconv(x) + self.lastconv(y)
+        tmp = F.interpolate(tmp, scale_factor=scale * 2, mode="bilinear", align_corners=False)
+        flow = tmp[:, :4] * scale * 2
+        mask = tmp[:, 4:5]
+        return flow, mask, y
+
+
+class IFBlock_bf_H_v2(nn.Module):
+    def __init__(self, in_planes, c=64, tf_dim=64, n_win=7, n_block=4, kv_downsample_mode='identity', topk=4,
+                 mlp_ratio=3, num_heads=4, kv_per_win=2):
+        super(IFBlock_bf_H_v2, self).__init__()
+        self.conv0 = nn.Sequential(
+            conv(in_planes, c // 2, 3, 2, 1),
+            conv(c // 2, c, 3, 2, 1),
+        )
+        self.tf_conv = nn.Sequential(
+            conv(c, tf_dim, 3, 1, 1),
+        )
+        self.tf_conv_revert = nn.Sequential(
+            conv(tf_dim, c, 3, 1, 1),
+        )
+        self.convblock = nn.Sequential(
+            conv(c, c),
+            conv(c, c),
+            conv(c, c),
+            conv(c, c),
+            conv(c, c),
+            conv(c, c),
+            conv(c, c),
+            conv(c, c),
+        )
+        self.lastconv = nn.ConvTranspose2d(c, 5, 4, 2, 1)
+        biformer_blocks = []
+        for i in range(n_block):
+            biformer_blocks.append(BiformerBlock(
+                dim=tf_dim, n_win=n_win, num_heads=num_heads, kv_downsample_mode=kv_downsample_mode, kv_per_win=kv_per_win,
+                topk=topk, mlp_ratio=mlp_ratio, side_dwconv=5, before_attn_dwconv=3, layer_scale_init_value=-1,
                 qk_dim=tf_dim, param_routing=False, diff_routing=False, soft_routing=False, pre_norm=True,
                 auto_pad=True))
         self.tf_block = nn.Sequential(*biformer_blocks)
@@ -1299,10 +1351,14 @@ class IFNet_bf_resnet_cbam_M_Res(nn.Module):
 class IFNet_bf_resnet_cbam_HM(nn.Module):
     def __init__(self):
         super(IFNet_bf_resnet_cbam_HM, self).__init__()
-        self.block0 = IFBlock_bf_H(6, c=240, tf_dim=192, n_block=6)
-        self.block1 = IFBlock_bf_H(13 + 4, c=150, tf_dim=128, n_block=6)
-        self.block2 = IFBlock_bf_H(13 + 4, c=90, tf_dim=128, n_block=6)
-        self.block_tea = IFBlock_bf_H(16 + 4, c=90, tf_dim=128, n_block=4)
+        self.block0 = IFBlock_bf_H_v2(6, c=240, tf_dim=192, n_win=7, n_block=4, kv_downsample_mode='ada_avgpool',
+                                      topk=4, mlp_ratio=3, kv_per_win=1)
+        self.block1 = IFBlock_bf_H_v2(13 + 4, c=150, tf_dim=128, n_win=7, n_block=6, kv_downsample_mode='ada_avgpool',
+                                      topk=16, mlp_ratio=3, kv_per_win=2)
+        self.block2 = IFBlock_bf_H_v2(13 + 4, c=90, tf_dim=64, n_win=14, n_block=6, kv_downsample_mode='ada_avgpool',
+                                      topk=32, mlp_ratio=3, kv_per_win=2)
+        self.block_tea = IFBlock_bf_H_v2(16 + 4, c=90, tf_dim=64, n_win=7, n_block=2, kv_downsample_mode='ada_avgpool',
+                                         topk=2, mlp_ratio=3, kv_per_win=1)
         self.contextnet = resnet50_feature()
         self.unet = UnetCBAM_MH()
         self.hc0 = conv(240, 64, 3, 1, 1)
