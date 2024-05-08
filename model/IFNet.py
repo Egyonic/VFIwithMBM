@@ -1491,10 +1491,14 @@ class IFNet_bf_resnet_cbam_HM(nn.Module):
 class IFNet_bf_resnet_cbam_HM_Res(nn.Module):
     def __init__(self):
         super(IFNet_bf_resnet_cbam_HM_Res, self).__init__()
-        self.block0 = IFBlock_bf_H(6, c=240, tf_dim=64)
-        self.block1 = IFBlock_bf_H(13 + 4, c=150, tf_dim=64)
-        self.block2 = IFBlock_bf_H(13 + 4, c=90, tf_dim=128)
-        self.block_tea = IFBlock_bf_H(16 + 4, c=90, tf_dim=128)
+        self.block0 = IFBlock_bf_H_v2(6, c=240, tf_dim=192, n_win=7, n_block=4, kv_downsample_mode='ada_avgpool',
+                                      topk=4, mlp_ratio=3, kv_per_win=1)
+        self.block1 = IFBlock_bf_H_v2(13 + 4, c=150, tf_dim=128, n_win=7, n_block=6, kv_downsample_mode='ada_avgpool',
+                                      topk=6, mlp_ratio=3, kv_per_win=1)
+        self.block2 = IFBlock_bf_H_v2(13 + 4, c=90, tf_dim=64, n_win=14, n_block=6, kv_downsample_mode='ada_avgpool',
+                                      topk=8, mlp_ratio=3, kv_per_win=2)
+        self.block_tea = IFBlock_bf_H_v2(16 + 4, c=90, tf_dim=64, n_win=14, n_block=2, kv_downsample_mode='ada_avgpool',
+                                         topk=4, mlp_ratio=3, kv_per_win=1)
         self.contextnet = resnet50_feature()
         self.unet = UnetCBAM_MH_Res()
         self.hc0 = conv(240, 64, 3, 1, 1)
