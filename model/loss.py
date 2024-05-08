@@ -165,9 +165,9 @@ class VGGPerceptualLossWithMask(nn.Module):
     def forward(self, X, Y, mask):
         X = self.normalize(X) * mask # 先使用mask得到部分
         Y = self.normalize(Y) * mask
-        num_ones = torch.sum(mask == 1).item() + 1
-        num_zeros = torch.sum(mask == 0).item() + 1
-        ratio = float(num_ones + num_zeros) / num_ones
+        # num_ones = torch.sum(mask == 1).item() + 1
+        # num_zeros = torch.sum(mask == 0).item() + 1
+        # ratio = float(num_ones + num_zeros) / num_ones
         indices = [2, 7, 12, 21, 30]
         weights = [1.0 / 2.6, 1.0 / 4.8, 1.0 / 3.7, 1.0 / 5.6, 10 / 1.5]
         k = 0
@@ -179,7 +179,7 @@ class VGGPerceptualLossWithMask(nn.Module):
                 # 只计算 mask 为 1 的部分
                 loss += weights[k] * (X - Y.detach()).abs().mean() * 0.1
                 k += 1
-        return loss * ratio
+        return loss
 
     """
     def forward(self, X, Y, mask):
