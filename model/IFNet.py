@@ -1603,7 +1603,7 @@ class IFNet_bf_resnet_cbam_HM_Res_L_v2(nn.Module):
                                       topk=4, mlp_ratio=3, kv_per_win=1)
         self.block1 = IFBlock_bf_H_L_v2(13 + 4, c=225, tf_dim=128, n_win=7, n_block=6, kv_downsample_mode='ada_avgpool',
                                       topk=6, mlp_ratio=3, kv_per_win=1)
-        self.block2 = IFBlock_bf_H_L_v2(13 + 4, c=135, tf_dim=64, n_win=14, n_block=8, kv_downsample_mode='ada_avgpool',
+        self.block2 = IFBlock_bf_H_L_v2(13 + 4, c=135, tf_dim=64, n_win=14, n_block=6, kv_downsample_mode='ada_avgpool',
                                       topk=8, mlp_ratio=3, kv_per_win=1)
         self.block_tea = IFBlock_bf_H_L_v2(16 + 4, c=135, tf_dim=64, n_win=14, n_block=2, kv_downsample_mode='ada_avgpool',
                                          topk=4, mlp_ratio=3, kv_per_win=1)
