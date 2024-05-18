@@ -49,10 +49,10 @@ class Model:
             self.flownet = IFNet_bf_LMD_Unetff()
         elif model_name == 'IFNet_bf_resnet':
             self.flownet = IFNet_bf_resnet()
-        elif model_name == 'IFNet_bf_resnet_tws':
-            self.flownet = IFNet_bf_resnet_tws()
-        elif model_name == 'IFNet_bf_cbam_resnet_bi':
-            self.flownet = IFNet_bf_cbam_resnet_bi()
+        # elif model_name == 'IFNet_bf_resnet_tws':
+        #     self.flownet = IFNet_bf_resnet_tws()
+        # elif model_name == 'IFNet_bf_cbam_resnet_bi':
+        #     self.flownet = IFNet_bf_cbam_resnet_bi()
         elif model_name == 'IFNet_bf_resnet_local_mae':
             self.flownet = IFNet_bf_resnet_local_mae()
         else:

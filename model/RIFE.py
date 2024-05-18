@@ -122,9 +122,9 @@ class Model:
         for i in range(3):
             scale_list[i] = scale_list[i] * 1.0 / scale
         imgs = torch.cat((img0, img1), 1)
-        flow, mask, merged, flow_teacher, merged_teacher, tmp, before_res, res, mask_guide \
+        flow, mask, merged, flow_teacher, merged_teacher, tmp, before_res, res, mask_guide, warped_img0, warped_img1\
             = self.flownet.visualize(imgs, scale_list, timestep=timestep)
-        return merged[2], mask, before_res, res, mask_guide, flow
+        return merged[2], mask, before_res, res, mask_guide, flow, warped_img0, warped_img1
 
     
     def update(self, imgs, gt, learning_rate=0, mul=1, training=True, flow_gt=None):
