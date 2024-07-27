@@ -43,18 +43,8 @@ class Model:
             self.flownet = IFNet_bf_resnet_cbam_HM_Res_L_v2()
         elif model_name == 'IFNet_bf_resnet_cbam_L_res':
             self.flownet = IFNet_bf_resnet_cbam_L_res()
-        elif model_name == 'IFNet_bf_L_Unetff':
-            self.flownet = IFNet_bf_L_Unetff()
-        elif model_name == 'IFNet_bf_LMD_Unetff':
-            self.flownet = IFNet_bf_LMD_Unetff()
         elif model_name == 'IFNet_bf_resnet':
             self.flownet = IFNet_bf_resnet()
-        elif model_name == 'IFNet_bf_resnet_tws':
-            self.flownet = IFNet_bf_resnet_tws()
-        elif model_name == 'IFNet_bf_cbam_resnet_bi':
-            self.flownet = IFNet_bf_cbam_resnet_bi()
-        elif model_name == 'IFNet_bf_cbam_mulExt':
-            self.flownet = IFNet_bf_cbam_mulExt()
         elif model_name == 'IFNet_bf_resnet_local_mae':
             self.flownet = IFNet_bf_resnet_local_mae()
         else:
@@ -76,7 +66,7 @@ class Model:
     def device(self):
         self.flownet.to(device)
 
-    def load_model(self, path, rank=0):
+    def load_model(self, path, rank=0, load_parts=False, parts=["contextnet", "unet"]):
         def convert(param):
             return {
             k.replace("module.", ""): v
@@ -95,6 +85,11 @@ class Model:
     def save_model(self, path, epoch, rank=0):
         if rank == 0:
             torch.save(self.flownet.state_dict(), '{}/flownet_{}.pkl'.format(path, epoch))
+
+    # 将模型参数转换为半精度浮点数
+    def half_precision(self):
+        for param in self.flownet.parameters():
+            param.data = param.data.half()
 
     def inference(self, img0, img1, scale=1, scale_list=[4, 2, 1], TTA=False, timestep=0.5):
         for i in range(3):
@@ -122,9 +117,9 @@ class Model:
         for i in range(3):
             scale_list[i] = scale_list[i] * 1.0 / scale
         imgs = torch.cat((img0, img1), 1)
-        flow, mask, merged, flow_teacher, merged_teacher, tmp, before_res, res, mask_guide, warped_img0, warped_img1\
-            = self.flownet.visualize(imgs, scale_list, timestep=timestep)
-        return merged[2], mask, before_res, res, mask_guide, flow, warped_img0, warped_img1
+        flow, mask, merged, flow_teacher, merged_teacher, tmp, before_res, res, mask_guide, warped_img0, warped_img1, \
+            c0, c0_x = self.flownet.visualize(imgs, scale_list, timestep=timestep)
+        return merged[2], mask, before_res, res, mask_guide, flow, warped_img0, warped_img1, c0, c0_x
 
     
     def update(self, imgs, gt, learning_rate=0, mul=1, training=True, flow_gt=None):

@@ -20,7 +20,7 @@ def flow2rgb(flow_map_np):
     return rgb_map.clip(0, 1)
 
 
-save_path = 'inference_result/process/00072_0675'  # 保存预测结果
+save_path = 'inference_result/process/00069_0109_3'  # 保存预测结果
 
 
 if not os.path.exists(save_path):
@@ -35,21 +35,26 @@ model.eval()
 model.device()
 
 # 加载输入帧图像
-im0_path = 'E:\\Workspace\\Datasets\\vimeo_triplet\\sequences\\00072\\0675\\im1.png'
-im1_path = 'E:\\Workspace\\Datasets\\vimeo_triplet\\sequences\\00072\\0675\\im3.png'
+im0_path = 'E:\\Workspace\\Datasets\\vimeo_triplet\\sequences\\00069\\0109\\im1.png'
+im1_path = 'E:\\Workspace\\Datasets\\vimeo_triplet\\sequences\\00069\\0109\\im3.png'
+target_path = 'E:\\Workspace\\Datasets\\vimeo_triplet\\sequences\\00069\\0109\\im2.png'
 I0 = cv2.imread(im0_path)
 I1 = cv2.imread(im1_path)
+I2 = cv2.imread(target_path)
 cv2.imwrite(os.path.join(save_path, f'I0.png'), I0)
 cv2.imwrite(os.path.join(save_path, f'I1.png'), I1)
+cv2.imwrite(os.path.join(save_path, f'I2.png'), I2)
 
 I0 = (torch.tensor(I0.transpose(2, 0, 1)).to(device) / 255.).unsqueeze(0)
 I1 = (torch.tensor(I1.transpose(2, 0, 1)).to(device) / 255.).unsqueeze(0)
 
-merged, mask, before_res, res, mask_guide, flow = model.inference_with_visibility(I0, I1)
+merged, mask, before_res, res, mask_guide, flow, warped_img0, warped_img1, c0, c0_x = model.inference_with_visibility(I0, I1)
 mid = merged[0]
 mask = mask[0]
 before_res = before_res[0]
 res = res[0]
+warped_img0 = warped_img0[0]
+warped_img1 = warped_img1[0]
 # 保存mask
 mask_img = np.round((mask * 255).detach().cpu().numpy()).astype('uint8').transpose(1, 2, 0)
 cv2.imwrite(os.path.join(save_path, f'mask.png'), mask_img)
@@ -65,6 +70,12 @@ for p_mask in mask_guide:
 # 保存预测帧
 mid_tmp = np.round((mid * 255).detach().cpu().numpy()).astype('uint8').transpose(1, 2, 0)
 cv2.imwrite(os.path.join(save_path, f'pred.png'), mid_tmp)
+
+warped_img0_tmp = np.round((warped_img0 * 255).detach().cpu().numpy()).astype('uint8').transpose(1, 2, 0)
+cv2.imwrite(os.path.join(save_path, f'warped_img0.png'), warped_img0_tmp)
+
+warped_img1_tmp = np.round((warped_img1 * 255).detach().cpu().numpy()).astype('uint8').transpose(1, 2, 0)
+cv2.imwrite(os.path.join(save_path, f'warped_img1.png'), warped_img1_tmp)
 
 before_res_tmp = np.round((before_res * 255).detach().cpu().numpy()).astype('uint8').transpose(1, 2, 0)
 cv2.imwrite(os.path.join(save_path, f'merged_warped.png'), before_res_tmp)
@@ -82,3 +93,27 @@ rgb_flow1 = flow2rgb(flow_1)  # 将光流转换为RGB图像
 rgb_flow2 = flow2rgb(flow_2)  # 将光流转换为RGB图像
 cv2.imwrite(os.path.join(save_path, f'flow_1.png'), (rgb_flow1 * 255).astype(np.uint8))  # 保存RGB图像
 cv2.imwrite(os.path.join(save_path, f'flow_2.png'), (rgb_flow2 * 255).astype(np.uint8))  # 保存RGB图像
+
+
+for i in range(3):
+    feature = c0[i]
+    feature = feature[:, 5:8, :, :]
+    feature = feature[0]
+    feature_tmp = np.round((feature * 255).detach().cpu().numpy()).astype('uint8').transpose(1, 2, 0)
+
+    cv2.imwrite(os.path.join(save_path, f'w_f_{i}.png'), feature_tmp)
+
+
+for i in range(3):
+    feature = c0_x[i]
+    feature = feature[:, 5:8, :, :]
+    feature = feature[0]
+    feature_tmp = np.round((feature * 255).detach().cpu().numpy()).astype('uint8').transpose(1, 2, 0)
+
+    cv2.imwrite(os.path.join(save_path, f'f_{i}.png'), feature_tmp)
+# feature = c0[0]
+# feature = feature[:, :3, :, :]
+# feature = feature[0]
+# feature_tmp = np.round((feature * 255).detach().cpu().numpy()).astype('uint8').transpose(1, 2, 0)
+#
+# cv2.imwrite(os.path.join(save_path, f'feature.png'), feature_tmp)

@@ -3,11 +3,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from model.warplayer import warp
 from model.refine import *
+from model.refine_tf import Restormer
 from model.biformer_models.biformer import Block as BiformerBlock
-from model.biformer_models.biformer import get_4_scale_multi_feature_extractor
-from model.resnet import resnet50_feature, resnet50_feature_tws, ResNet_feature_bi, get_ResNet_feature_bi, \
-    resnet50_feature_L
-
+from model.resnet import resnet50_feature, resnet50_feature_L
 
 def deconv(in_planes, out_planes, kernel_size=4, stride=2, padding=1):
     return nn.Sequential(
@@ -86,7 +84,8 @@ class IFBlock_bf(nn.Module):
     使用了 BiFormer Block 的IFBlock， 采用金字塔结构提取三层特征叠加
     """
 
-    def __init__(self, in_planes, c=64, tf_dim=64, n_win=7):
+    def __init__(self, in_planes, c=64, tf_dim=64, n_win=14, n_block=4, kv_downsample_mode='identity', topk=4,
+                 mlp_ratio=3, num_heads=4, kv_per_win=2):
         super(IFBlock_bf, self).__init__()
         self.conv0 = nn.Sequential(
             conv(in_planes, c // 2, 3, 2, 1),
@@ -110,10 +109,10 @@ class IFBlock_bf(nn.Module):
         )
         self.lastconv = nn.ConvTranspose2d(c, 5, 4, 2, 1)
         biformer_blocks = []
-        for i in range(4):
+        for i in range(n_block):
             biformer_blocks.append(BiformerBlock(
-                dim=tf_dim, n_win=n_win, num_heads=4, kv_downsample_mode='identity', kv_per_win=-1,
-                topk=4, mlp_ratio=3, side_dwconv=5, before_attn_dwconv=3, layer_scale_init_value=-1,
+                dim=tf_dim, n_win=n_win, num_heads=num_heads, kv_downsample_mode=kv_downsample_mode, kv_per_win=kv_per_win,
+                topk=topk, mlp_ratio=mlp_ratio, side_dwconv=5, before_attn_dwconv=3, layer_scale_init_value=-1,
                 qk_dim=tf_dim, param_routing=False, diff_routing=False, soft_routing=False, pre_norm=True,
                 auto_pad=True))
         self.tf_block = nn.Sequential(*biformer_blocks)
@@ -292,7 +291,7 @@ class IFBlock_bf_H_v2(nn.Module):
 
 
 class IFBlock_bf_H_L(nn.Module):
-    def __init__(self, in_planes, c=64, tf_dim=64, n_win=7, n_block=4):
+    def __init__(self, in_planes, c=64, tf_dim=64, n_win=7, n_block=4, topk=4):
         super(IFBlock_bf_H_L, self).__init__()
         self.conv0 = nn.Sequential(
             conv(in_planes, c // 2, 3, 1, 1),
@@ -319,7 +318,7 @@ class IFBlock_bf_H_L(nn.Module):
         for i in range(n_block):
             biformer_blocks.append(BiformerBlock(
                 dim=tf_dim, n_win=n_win, num_heads=4, kv_downsample_mode='identity', kv_per_win=-1,
-                topk=4, mlp_ratio=3, side_dwconv=5, before_attn_dwconv=3, layer_scale_init_value=-1,
+                topk=topk, mlp_ratio=3, side_dwconv=5, before_attn_dwconv=3, layer_scale_init_value=-1,
                 qk_dim=tf_dim, param_routing=False, diff_routing=False, soft_routing=False, pre_norm=True,
                 auto_pad=True))
         self.tf_block = nn.Sequential(*biformer_blocks)
@@ -516,9 +515,9 @@ class IFNet(nn.Module):
 class IFNet_bf(nn.Module):
     def __init__(self):
         super(IFNet_bf, self).__init__()
-        self.block0 = IFBlock_bf(6, c=240, tf_dim=64)
-        self.block1 = IFBlock_bf(13 + 4, c=150, tf_dim=64)
-        self.block2 = IFBlock_bf(13 + 4, c=90, tf_dim=128)
+        self.block0 = IFBlock_bf(6, c=240, tf_dim=64, n_win=14)
+        self.block1 = IFBlock_bf(13 + 4, c=150, tf_dim=64, n_win=14)
+        self.block2 = IFBlock_bf(13 + 4, c=90, tf_dim=128, n_win=14)
         self.block_tea = IFBlock_bf(16 + 4, c=90, tf_dim=128)
         self.contextnet = Contextnet()
         self.unet = Unet()
@@ -1099,8 +1098,8 @@ class IFNet_bf_resnet_cbam_M(nn.Module):
                                                                                                      True) + 0.01).float().detach()
                 loss_distill += (((flow_teacher.detach() - flow_list[i]) ** 2).mean(1, True) ** 0.5 * loss_mask).mean()
 
-        c0 = self.contextnet(img0, flow[:, :2])
-        c1 = self.contextnet(img1, flow[:, 2:4])
+        c0, c0_x = self.contextnet.visilize(img0, flow[:, :2])
+        c1, c1_x = self.contextnet.visilize(img1, flow[:, 2:4])
         mask_guide = []
         # 获得多尺度patch mask
         m = get_rec_region(mask_list[2], 0.2, 0.8)
@@ -1113,7 +1112,7 @@ class IFNet_bf_resnet_cbam_M(nn.Module):
         res = tmp[:, :3] * 2 - 1
         before_res = merged[2].clone()
         merged[2] = torch.clamp(merged[2] + res, 0, 1)
-        return flow_list, mask_list[2], merged, flow_teacher, merged_teacher, tmp, before_res, res, mask_guide, warped_img0, warped_img1
+        return flow_list, mask_list[2], merged, flow_teacher, merged_teacher, tmp, before_res, res, mask_guide, warped_img0, warped_img1, c0, c0_x
 
 
 class IFNet_bf_resnet_cbam_M_Res(nn.Module):
@@ -1432,9 +1431,9 @@ class IFNet_bf_resnet_cbam_HM_Res(nn.Module):
 class IFNet_bf_resnet_cbam_HM_L(nn.Module):
     def __init__(self):
         super(IFNet_bf_resnet_cbam_HM_L, self).__init__()
-        self.block0 = IFBlock_bf_H_L(6, c=360, tf_dim=64, n_block=6)
-        self.block1 = IFBlock_bf_H_L(13 + 4, c=225, tf_dim=128, n_block=6)
-        self.block2 = IFBlock_bf_H_L(13 + 4, c=135, tf_dim=192, n_block=6)
+        self.block0 = IFBlock_bf_H_L(6, c=360, tf_dim=64, n_block=6, topk=4)
+        self.block1 = IFBlock_bf_H_L(13 + 4, c=225, tf_dim=128, n_block=6, topk=6)
+        self.block2 = IFBlock_bf_H_L(13 + 4, c=135, tf_dim=192, n_block=6, topk=8, n_win=7)
         self.block_tea = IFBlock_bf_H_L(16 + 4, c=135, tf_dim=128, n_block=6)
         self.contextnet = resnet50_feature_L()
         self.unet = UnetCBAM_MH_L()
@@ -1515,9 +1514,9 @@ class IFNet_bf_resnet_cbam_HM_L(nn.Module):
 class IFNet_bf_resnet_cbam_HM_Res_L(nn.Module):
     def __init__(self):
         super(IFNet_bf_resnet_cbam_HM_Res_L, self).__init__()
-        self.block0 = IFBlock_bf_H_L(6, c=360, tf_dim=64, n_block=6)
-        self.block1 = IFBlock_bf_H_L(13 + 4, c=225, tf_dim=128, n_block=6)
-        self.block2 = IFBlock_bf_H_L(13 + 4, c=135, tf_dim=192, n_block=6)
+        self.block0 = IFBlock_bf_H_L(6, c=360, tf_dim=64, n_block=6, topk=4)
+        self.block1 = IFBlock_bf_H_L(13 + 4, c=225, tf_dim=128, n_block=6, topk=4, n_win=7)
+        self.block2 = IFBlock_bf_H_L(13 + 4, c=135, tf_dim=192, n_block=6, topk=4, n_win=14)
         self.block_tea = IFBlock_bf_H_L(16 + 4, c=135, tf_dim=128, n_block=6)
         self.contextnet = resnet50_feature_L()
         self.unet = UnetCBAM_MH_Res_L()
@@ -1684,15 +1683,20 @@ class IFNet_bf_resnet_cbam_HM_Res_L_v2(nn.Module):
         return flow_list, mask_list[2], merged, flow_teacher, merged_teacher, loss_distill
 
 
-class IFNet_bf_L_Unetff(nn.Module):
+
+class IFNet_bf_resnet_RF_M(nn.Module):
     def __init__(self):
-        super(IFNet_bf_L_Unetff, self).__init__()
-        self.block0 = IFBlock_bf_L_M(6, c=360, tf_dim=192)
-        self.block1 = IFBlock_bf_L_M(13 + 4, c=225, tf_dim=192)
-        self.block2 = IFBlock_bf_L_M(13 + 4, c=135, tf_dim=128)
-        self.block_tea = IFBlock_bf_L_M(16 + 4, c=135, tf_dim=128)
+        super(IFNet_bf_resnet_RF_M, self).__init__()
+        self.block0 = IFBlock_bf(6, c=240, tf_dim=192, n_win=7, n_block=4, kv_downsample_mode='ada_avgpool',
+                                      topk=4, mlp_ratio=2, kv_per_win=1)
+        self.block1 = IFBlock_bf(13 + 4, c=150, tf_dim=128, n_win=7, n_block=6, kv_downsample_mode='ada_avgpool',
+                                      topk=4, mlp_ratio=2, kv_per_win=1)
+        self.block2 = IFBlock_bf(13 + 4, c=90, tf_dim=64, n_win=14, n_block=6, kv_downsample_mode='ada_avgpool',
+                                      topk=6, mlp_ratio=2, kv_per_win=1)
+        self.block_tea = IFBlock_bf(16 + 4, c=90, tf_dim=64, n_win=14, n_block=2, kv_downsample_mode='ada_avgpool',
+                                         topk=2, mlp_ratio=2, kv_per_win=1)
         self.contextnet = resnet50_feature_L()
-        self.unet = Unet_FF()
+        self.unet = Restormer()
 
     def forward(self, x, scale=[4, 2, 1], timestep=0.5):
         img0 = x[:, :3]
@@ -1701,7 +1705,6 @@ class IFNet_bf_L_Unetff(nn.Module):
         flow_list = []
         merged = []
         mask_list = []
-        mo_list = []
         warped_img0 = img0
         warped_img1 = img1
         flow = None
@@ -1709,22 +1712,21 @@ class IFNet_bf_L_Unetff(nn.Module):
         stu = [self.block0, self.block1, self.block2]
         for i in range(3):
             if flow != None:
-                flow_d, mask_d, m = stu[i](torch.cat((img0, img1, warped_img0, warped_img1, mask), 1), flow,
-                                           scale=scale[i])
+                flow_d, mask_d = stu[i](torch.cat((img0, img1, warped_img0, warped_img1, mask), 1), flow,
+                                        scale=scale[i])
                 flow = flow + flow_d
                 mask = mask + mask_d
             else:
-                flow, mask, m = stu[i](torch.cat((img0, img1), 1), None, scale=scale[i])
+                flow, mask = stu[i](torch.cat((img0, img1), 1), None, scale=scale[i])
             mask_list.append(torch.sigmoid(mask))
             flow_list.append(flow)
-            mo_list.append(m)
             warped_img0 = warp(img0, flow[:, :2])
             warped_img1 = warp(img1, flow[:, 2:4])
             merged_student = (warped_img0, warped_img1)
             merged.append(merged_student)
         if gt.shape[1] == 3:
-            flow_d, mask_d, m_t = self.block_tea(torch.cat((img0, img1, warped_img0, warped_img1, mask, gt), 1), flow,
-                                                 scale=1)
+            flow_d, mask_d = self.block_tea(torch.cat((img0, img1, warped_img0, warped_img1, mask, gt), 1), flow,
+                                            scale=1)
             flow_teacher = flow + flow_d
             warped_img0_teacher = warp(img0, flow_teacher[:, :2])
             warped_img1_teacher = warp(img1, flow_teacher[:, 2:4])
@@ -1742,178 +1744,26 @@ class IFNet_bf_L_Unetff(nn.Module):
 
         c0 = self.contextnet(img0, flow[:, :2])
         c1 = self.contextnet(img1, flow[:, 2:4])
-        edge0 = sobel_edge_detection(img0)
-        edge1 = sobel_edge_detection(img1)
-        edge = torch.cat((edge0, edge1), 1)
-        tmp = self.unet(img0, img1, warped_img0, warped_img1, mask, flow, c0, c1, edge, mo_list)
-        res = tmp[:, :3] * 2 - 1
-        merged[2] = torch.clamp(merged[2] + res, 0, 1)
-        return flow_list, mask_list[2], merged, flow_teacher, merged_teacher, loss_distill
 
-
-class IFNet_bf_LMD_Unetff(nn.Module):
-    def __init__(self):
-        super(IFNet_bf_LMD_Unetff, self).__init__()
-        self.block0 = IFBlock_bf_L_M(6, c=360, tf_dim=192)
-        self.block1 = IFBlock_bf_L_M(13 + 4, c=225, tf_dim=192)
-        self.block2 = IFBlock_bf_L_M(13 + 4, c=135, tf_dim=128)
-        self.block_tea = IFBlock_bf_L_M(16 + 4, c=135, tf_dim=128)
-        self.contextnet = resnet50_feature_L()
-        self.unet = Unet_FF_M()
-
-    def forward(self, x, scale=[4, 2, 1], timestep=0.5):
-        img0 = x[:, :3]
-        img1 = x[:, 3:6]
-        gt = x[:, 6:]  # In inference time, gt is None
-        flow_list = []
-        merged = []
-        mask_list = []
-        mo_list = []
-        warped_img0 = img0
-        warped_img1 = img1
-        flow = None
-        loss_distill = 0
-        stu = [self.block0, self.block1, self.block2]
-        for i in range(3):
-            if flow != None:
-                flow_d, mask_d, m = stu[i](torch.cat((img0, img1, warped_img0, warped_img1, mask), 1), flow,
-                                           scale=scale[i])
-                flow = flow + flow_d
-                mask = mask + mask_d
-            else:
-                flow, mask, m = stu[i](torch.cat((img0, img1), 1), None, scale=scale[i])
-            mask_list.append(torch.sigmoid(mask))
-            flow_list.append(flow)
-            mo_list.append(m)
-            warped_img0 = warp(img0, flow[:, :2])
-            warped_img1 = warp(img1, flow[:, 2:4])
-            merged_student = (warped_img0, warped_img1)
-            merged.append(merged_student)
-        if gt.shape[1] == 3:
-            flow_d, mask_d, m_t = self.block_tea(torch.cat((img0, img1, warped_img0, warped_img1, mask, gt), 1), flow,
-                                                 scale=1)
-            flow_teacher = flow + flow_d
-            warped_img0_teacher = warp(img0, flow_teacher[:, :2])
-            warped_img1_teacher = warp(img1, flow_teacher[:, 2:4])
-            mask_teacher = torch.sigmoid(mask + mask_d)
-            merged_teacher = warped_img0_teacher * mask_teacher + warped_img1_teacher * (1 - mask_teacher)
-        else:
-            flow_teacher = None
-            merged_teacher = None
-        for i in range(3):
-            merged[i] = merged[i][0] * mask_list[i] + merged[i][1] * (1 - mask_list[i])
-            if gt.shape[1] == 3:
-                loss_mask = ((merged[i] - gt).abs().mean(1, True) > (merged_teacher - gt).abs().mean(1,
-                                                                                                     True) + 0.01).float().detach()
-                loss_distill += (((flow_teacher.detach() - flow_list[i]) ** 2).mean(1, True) ** 0.5 * loss_mask).mean()
-
-        c0 = self.contextnet(img0, flow[:, :2])
-        c1 = self.contextnet(img1, flow[:, 2:4])
         mask_guide = []
-        for i in range(3):
-            scale_factor = 2 ** i
-            if scale_factor > 1:
-                ms = F.avg_pool2d(mask_list[i], kernel_size=scale_factor, stride=scale_factor)
-            else:
-                ms = mask_list[i]
-            m = get_rec_region(ms, 0.15, 0.85)
-            _, m = get_rec_patches(m)
+        # 获得多尺度patch mask
+        m = get_rec_region(mask_list[2], 0.15, 0.85)
+        _, m = get_rec_patches(m, patch_size=8, threshold=2)
+        mask_guide.append(m)
+        for i in range(2):
+            scale_factor = 2
+            m = F.avg_pool2d(m, kernel_size=scale_factor, stride=scale_factor)
             mask_guide.append(m)
-
-        edge0 = sobel_edge_detection(img0)
-        edge1 = sobel_edge_detection(img1)
-        edge = torch.cat((edge0, edge1), 1)
-
-        tmp = self.unet(img0, img1, warped_img0, warped_img1, mask, flow, c0, c1, edge, mo_list, mask_guide)
+        # 融合多个信息
+        tmp = self.unet(img0, img1, warped_img0, warped_img1, mask, flow, c0, c1, mask_guide)
         res = tmp[:, :3] * 2 - 1
         merged[2] = torch.clamp(merged[2] + res, 0, 1)
         return flow_list, mask_list[2], merged, flow_teacher, merged_teacher, loss_distill
-
-
-class IFNet_bf_LMD_Unetff(nn.Module):
-    def __init__(self):
-        super(IFNet_bf_LMD_Unetff, self).__init__()
-        self.block0 = IFBlock_bf_L_M(6, c=360, tf_dim=192)
-        self.block1 = IFBlock_bf_L_M(13 + 4, c=225, tf_dim=192)
-        self.block2 = IFBlock_bf_L_M(13 + 4, c=135, tf_dim=128)
-        self.block_tea = IFBlock_bf_L_M(16 + 4, c=135, tf_dim=128)
-        self.contextnet = resnet50_feature_L()
-        self.unet = Unet_FF_M()
-
-    def forward(self, x, scale=[4, 2, 1], timestep=0.5):
-        img0 = x[:, :3]
-        img1 = x[:, 3:6]
-        gt = x[:, 6:]  # In inference time, gt is None
-        flow_list = []
-        merged = []
-        mask_list = []
-        mo_list = []
-        warped_img0 = img0
-        warped_img1 = img1
-        flow = None
-        loss_distill = 0
-        stu = [self.block0, self.block1, self.block2]
-        for i in range(3):
-            if flow != None:
-                flow_d, mask_d, m = stu[i](torch.cat((img0, img1, warped_img0, warped_img1, mask), 1), flow,
-                                           scale=scale[i])
-                flow = flow + flow_d
-                mask = mask + mask_d
-            else:
-                flow, mask, m = stu[i](torch.cat((img0, img1), 1), None, scale=scale[i])
-            mask_list.append(torch.sigmoid(mask))
-            flow_list.append(flow)
-            mo_list.append(m)
-            warped_img0 = warp(img0, flow[:, :2])
-            warped_img1 = warp(img1, flow[:, 2:4])
-            merged_student = (warped_img0, warped_img1)
-            merged.append(merged_student)
-        if gt.shape[1] == 3:
-            flow_d, mask_d, m_t = self.block_tea(torch.cat((img0, img1, warped_img0, warped_img1, mask, gt), 1), flow,
-                                                 scale=1)
-            flow_teacher = flow + flow_d
-            warped_img0_teacher = warp(img0, flow_teacher[:, :2])
-            warped_img1_teacher = warp(img1, flow_teacher[:, 2:4])
-            mask_teacher = torch.sigmoid(mask + mask_d)
-            merged_teacher = warped_img0_teacher * mask_teacher + warped_img1_teacher * (1 - mask_teacher)
-        else:
-            flow_teacher = None
-            merged_teacher = None
-        for i in range(3):
-            merged[i] = merged[i][0] * mask_list[i] + merged[i][1] * (1 - mask_list[i])
-            if gt.shape[1] == 3:
-                loss_mask = ((merged[i] - gt).abs().mean(1, True) > (merged_teacher - gt).abs().mean(1,
-                                                                                                     True) + 0.01).float().detach()
-                loss_distill += (((flow_teacher.detach() - flow_list[i]) ** 2).mean(1, True) ** 0.5 * loss_mask).mean()
-
-        c0 = self.contextnet(img0, flow[:, :2])
-        c1 = self.contextnet(img1, flow[:, 2:4])
-        mask_guide = []
-        for i in range(3):
-            scale_factor = 2 ** i
-            if scale_factor > 1:
-                ms = F.avg_pool2d(mask_list[i], kernel_size=scale_factor, stride=scale_factor)
-            else:
-                ms = mask_list[i]
-            m = get_rec_region(ms, 0.15, 0.85)
-            _, m = get_rec_patches(m)
-            mask_guide.append(m)
-
-        edge0 = sobel_edge_detection(img0)
-        edge1 = sobel_edge_detection(img1)
-        edge = torch.cat((edge0, edge1), 1)
-
-        tmp = self.unet(img0, img1, warped_img0, warped_img1, mask, flow, c0, c1, edge, mo_list, mask_guide)
-        res = tmp[:, :3] * 2 - 1
-        merged[2] = torch.clamp(merged[2] + res, 0, 1)
-        return flow_list, mask_list[2], merged, flow_teacher, merged_teacher, loss_distill
-
-
 # test net
 
 if __name__ == "__main__":
     # flownet = IFNet_bf_resnet_local_mae()
-    flownet = IFNet_bf_resnet_cbam_HM_Res_L()
+    flownet = IFNet_bf_resnet_RF_M()
     input = torch.rand(1, 9, 224, 224)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     flownet.to(device)
