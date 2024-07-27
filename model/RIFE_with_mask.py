@@ -43,10 +43,8 @@ class Model:
             self.flownet = IFNet_bf_resnet_cbam_HM_Res_L_v2()
         elif model_name == 'IFNet_bf_resnet_cbam_L_res':
             self.flownet = IFNet_bf_resnet_cbam_L_res()
-        elif model_name == 'IFNet_bf_L_Unetff':
-            self.flownet = IFNet_bf_L_Unetff()
-        elif model_name == 'IFNet_bf_LMD_Unetff':
-            self.flownet = IFNet_bf_LMD_Unetff()
+        elif model_name == 'IFNet_bf_resnet_RF_M':
+            self.flownet = IFNet_bf_resnet_RF_M()
         elif model_name == 'IFNet_bf_resnet':
             self.flownet = IFNet_bf_resnet()
         # elif model_name == 'IFNet_bf_resnet_tws':
@@ -65,7 +63,7 @@ class Model:
         self.sobel = SOBEL()
         self.vgg_loss = VGGPerceptualLossWithMask()
         if local_rank != -1:
-            self.flownet = DDP(self.flownet, device_ids=[local_rank], output_device=local_rank)
+            self.flownet = DDP(self.flownet, device_ids=[local_rank], output_device=local_rank, find_unused_parameters=True)
 
     def train(self):
         self.flownet.train()

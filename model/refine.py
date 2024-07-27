@@ -10,7 +10,7 @@ from PIL import Image
 import matplotlib.pyplot as plt
 import functools
 
-from model.lomar.models_lomar import MaskedAutoencoderViT, mae_vit_base_patch16
+from model.lomar.models_lomar import mae_vit_base_patch16
 from model.lomar.models_vit import vit_base_patch16_decoder
 from model.mae.models_mae import mae_vit_spe_base_patch16_dec512d8b, mae_vit_spe_base_patch8_tiny
 
