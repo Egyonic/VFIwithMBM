@@ -1696,7 +1696,7 @@ class IFNet_bf_resnet_RF_M(nn.Module):
         self.block_tea = IFBlock_bf(16 + 4, c=90, tf_dim=64, n_win=14, n_block=2, kv_downsample_mode='ada_avgpool',
                                          topk=2, mlp_ratio=2, kv_per_win=1)
         self.contextnet = resnet50_feature_L()
-        self.unet = Restormer()
+        self.unet = Restormer(inp_channels=50, out_channels=3, dim=32)
 
     def forward(self, x, scale=[4, 2, 1], timestep=0.5):
         img0 = x[:, :3]

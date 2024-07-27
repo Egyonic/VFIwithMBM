@@ -195,6 +195,7 @@ class Restormer(nn.Module):
                  dim=48,
                  num_blocks=[2, 4, 4, 2],
                  num_refinement_blocks=2,
+
                  heads=[1, 2, 4, 8],
                  ffn_expansion_factor=1,
                  bias=False,
@@ -210,13 +211,13 @@ class Restormer(nn.Module):
             TransformerBlock(dim=dim, num_heads=heads[0], ffn_expansion_factor=ffn_expansion_factor, bias=bias,
                              LayerNorm_type=LayerNorm_type) for i in range(num_blocks[0])])
 
-        self.c_down1 = nn.Conv2d(64, 32, kernel_size=3, stride=1, padding=1, bias=False)
+        self.c_down1 = nn.Conv2d(64 + 1, 32, kernel_size=3, stride=1, padding=1, bias=False)
         self.down1_2 = Downsample(dim, dim)  ## From Level 1 to Level 2
         self.encoder_level2 = nn.Sequential(*[
             TransformerBlock(dim=int(dim * 2 ** 1 + 32), num_heads=heads[1], ffn_expansion_factor=ffn_expansion_factor,
                              bias=bias, LayerNorm_type=LayerNorm_type) for i in range(num_blocks[1])])
 
-        self.c_down2 = nn.Conv2d(128, 64, kernel_size=3, stride=1, padding=1, bias=False)
+        self.c_down2 = nn.Conv2d(128 + 1, 64, kernel_size=3, stride=1, padding=1, bias=False)
         self.down2_3 = Downsample(dim * 2 + 32, dim * 2)  ## From Level 2 to Level 3
         self.encoder_level3 = nn.Sequential(*[
             TransformerBlock(dim=int(dim * 4 + 64), num_heads=heads[2], ffn_expansion_factor=ffn_expansion_factor,
@@ -243,11 +244,11 @@ class Restormer(nn.Module):
         self.up2_1 = Upsample(dim * 2 + 32)  ## From Level 2 to Level 1  (NO 1x1 conv to reduce channels)
 
         self.decoder_level1 = nn.Sequential(*[
-            TransformerBlock(dim=int(dim * 1 + 64), num_heads=heads[0], ffn_expansion_factor=ffn_expansion_factor,
+            TransformerBlock(dim=int(dim * 1 + 16 + dim), num_heads=heads[0], ffn_expansion_factor=ffn_expansion_factor,
                              bias=bias, LayerNorm_type=LayerNorm_type) for i in range(num_blocks[0])])
 
         self.refinement = nn.Sequential(*[
-            TransformerBlock(dim=int(dim * 1 + 64), num_heads=heads[0], ffn_expansion_factor=ffn_expansion_factor,
+            TransformerBlock(dim=int(dim * 1 + 16 + dim), num_heads=heads[0], ffn_expansion_factor=ffn_expansion_factor,
                              bias=bias, LayerNorm_type=LayerNorm_type) for i in range(num_refinement_blocks)])
 
         #### For Dual-Pixel Defocus Deblurring Task ####
@@ -256,19 +257,19 @@ class Restormer(nn.Module):
             self.skip_conv = nn.Conv2d(dim, int(dim * 2 ** 1), kernel_size=1, bias=bias)
         ###########################
 
-        self.output = nn.Conv2d(dim * 1 + 64, out_channels, kernel_size=3, stride=1, padding=1, bias=bias)
+        self.output = nn.Conv2d(dim * 1 + 16 + dim, out_channels, kernel_size=3, stride=1, padding=1, bias=bias)
 
     def forward(self, img0, img1, warped_img0, warped_img1, mask, flow, c0, c1, mask_guide):
-        inp_img = torch.cat((img0, img1, mask, warped_img0, warped_img1, c0[0], c1[0], flow), 1)
+        inp_img = torch.cat((img0, img1, mask, mask_guide[0], warped_img0, warped_img1, c0[0], c1[0], flow), 1)
 
         inp_enc_level1 = self.patch_embed(inp_img)
         out_enc_level1 = self.encoder_level1(inp_enc_level1)
 
-        f1 = self.c_down1(torch.cat([c0[1], c1[1]], 1))
+        f1 = self.c_down1(torch.cat([mask_guide[1], c0[1], c1[1]], 1))
         inp_enc_level2 = self.down1_2(out_enc_level1)
         out_enc_level2 = self.encoder_level2(torch.cat([inp_enc_level2, f1], 1))
 
-        f2 = self.c_down2(torch.cat([c0[2], c1[2]], 1))
+        f2 = self.c_down2(torch.cat([mask_guide[2], c0[2], c1[2]], 1))
         inp_enc_level3 = self.down2_3(out_enc_level2)
         out_enc_level3 = self.encoder_level3(torch.cat([inp_enc_level3, f2], 1))
 
@@ -307,7 +308,7 @@ class Restormer(nn.Module):
 
 if __name__ == "__main__":
     # flownet = IFNet_bf_resnet_local_mae()
-    flownet = Restormer()
+    flownet = Restormer(inp_channels=49,out_channels=3, dim=32)
     input = torch.rand(1, 17, 224, 224)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     flownet.to(device)
