@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from model.warplayer import warp
 from model.refine import *
-from model.refine_tf import Restormer
+from model.refine_tf import Restormer, Restormer_BRA
 from model.biformer_models.biformer import Block as BiformerBlock
 from model.resnet import resnet50_feature, resnet50_feature_L
 
