@@ -301,7 +301,7 @@ class Restormer(nn.Module):
         else:
             out_dec_level1 = self.output(out_dec_level1)
 
-        return out_dec_level1
+        return torch.sigmoid(out_dec_level1)
 
 
 
