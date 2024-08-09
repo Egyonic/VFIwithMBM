@@ -181,7 +181,7 @@ class IFBlock_bf_L(nn.Module):
         y = self.tf_conv(x)
         y = self.tf_block(y)
         y = self.tf_conv_revert(y)
-        tmp = self.lastconv(x) + self.lastconv(y)
+        tmp = self.lastconv(x+y)
         tmp = F.interpolate(tmp, scale_factor=scale, mode="bilinear", align_corners=False)
         flow = tmp[:, :4] * scale
         mask = tmp[:, 4:5]
