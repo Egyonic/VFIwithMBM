@@ -45,6 +45,8 @@ class Model:
             self.flownet = IFNet_bf_resnet_cbam_L_res()
         elif model_name == 'IFNet_bf_resnet_RF_M':
             self.flownet = IFNet_bf_resnet_RF_M()
+        elif model_name == 'IFNet_bf_resnet_RF_M_L':
+            self.flownet = IFNet_bf_resnet_RF_M_L()
         elif model_name == 'IFNet_bf_resnet':
             self.flownet = IFNet_bf_resnet()
         elif model_name == 'IFNet_bf_resnet_local_mae':
@@ -82,8 +84,8 @@ class Model:
             state_dict = torch.load('{}/flownet.pkl'.format(path))
             if "mae" in state_dict and not hasattr(self.flownet, "mae"):
                 state_dict.pop("mae")
-            # self.flownet.load_state_dict(convert(state_dict), strict=True)
-            self.flownet.load_state_dict(torch.load('{}/flownet.pkl'.format(path)))
+            self.flownet.load_state_dict(convert(state_dict), strict=True)
+            # self.flownet.load_state_dict(torch.load('{}/flownet.pkl'.format(path)))
 
     def save_model(self, path, epoch, rank=0):
         if rank == 0:
