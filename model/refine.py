@@ -3,6 +3,7 @@ import time
 import cv2
 import torch
 import torch.nn as nn
+import torchvision.ops as ops
 import numpy as np
 import torch.optim as optim
 import itertools
@@ -68,8 +69,9 @@ class DepthwiseSeparableDeConv(nn.Module):
         super(DepthwiseSeparableDeConv, self).__init__()
 
         # 深度卷积：每个输入通道对应一个卷积核
-        self.depthwise = nn.ConvTranspose2d(in_channels=in_channels, out_channels=in_channels, kernel_size=4, stride=2, padding=1,
-                                 bias=True, groups=in_channels)
+        self.depthwise = nn.ConvTranspose2d(in_channels=in_channels, out_channels=in_channels, kernel_size=4, stride=2,
+                                            padding=1,
+                                            bias=True, groups=in_channels)
 
         # 逐点卷积：1x1卷积，将深度卷积的输出通道数转化为所需的输出通道数
         self.pointwise = nn.Conv2d(in_channels, out_channels, kernel_size=1)
@@ -78,6 +80,7 @@ class DepthwiseSeparableDeConv(nn.Module):
         x = self.depthwise(x)
         x = self.pointwise(x)
         return x
+
 
 def dwConv(in_channels, kernel_size=3, stride=1, padding=1):
     return nn.Sequential(
@@ -98,6 +101,30 @@ def DSCDeconv(in_channels, out_channels):
     return nn.Sequential(
         DepthwiseSeparableDeConv(in_channels, out_channels),
         nn.PReLU(out_channels)
+    )
+
+
+class DCNv2(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, padding=1):
+        super(DCNv2, self).__init__()
+        self.offsets = nn.Conv2d(in_channels, 2 * kernel_size * kernel_size, kernel_size=kernel_size, stride=stride,
+                                 padding=padding)
+        self.modulation = nn.Conv2d(in_channels, kernel_size * kernel_size, kernel_size=kernel_size, stride=stride,
+                                    padding=padding)
+        self.deform_conv = ops.DeformConv2d(in_channels, out_channels, kernel_size=kernel_size, stride=stride,
+                                            padding=padding)
+
+    def forward(self, x):
+        offsets = self.offsets(x)
+        modulation = torch.sigmoid(self.modulation(x))
+        x = self.deform_conv(x, offsets, modulation)
+        return x
+
+
+def DCNconv(in_planes, out_planes, kernel_size=3, stride=1, padding=1):
+    return nn.Sequential(
+        DCNv2(in_planes, out_planes, kernel_size=kernel_size, stride=stride, padding=padding),
+        nn.PReLU(out_planes)
     )
 
 
@@ -305,7 +332,7 @@ class UnetCBAM_L(nn.Module):
 class UnetCBAM_M(nn.Module):
     def __init__(self):
         super(UnetCBAM_M, self).__init__()
-        self.down0 = Conv2(17 , 2 * c)
+        self.down0 = Conv2(17, 2 * c)
         self.down1 = Conv2(4 * c + 1, 4 * c)  # 64 + 1  -> 64  有mask
         self.down2 = Conv2(8 * c + 1, 8 * c)  # 128 + 1 -> 128  有mask
         self.down3 = Conv2(16 * c + 1, 16 * c)  # 256 + 1 -> 256  有mask
@@ -324,11 +351,11 @@ class UnetCBAM_M(nn.Module):
     def forward(self, img0, img1, warped_img0, warped_img1, mask, flow, c0, c1, mask_guide):
         s0 = self.down0(torch.cat((img0, img1, warped_img0, warped_img1, mask, flow), 1))
         s0 = self.cbam0(s0) + s0
-        s1 = self.down1(torch.cat((s0,  mask_guide[0], c0[0], c1[0]), 1))  # 112
+        s1 = self.down1(torch.cat((s0, mask_guide[0], c0[0], c1[0]), 1))  # 112
         s1 = self.cbam1(s1) + s1
-        s2 = self.down2(torch.cat((s1,  mask_guide[1], c0[1], c1[1]), 1))  # 56
+        s2 = self.down2(torch.cat((s1, mask_guide[1], c0[1], c1[1]), 1))  # 56
         s2 = self.cbam2(s2) + s2
-        s3 = self.down3(torch.cat((s2,  mask_guide[2], c0[2], c1[2]), 1))  # 28
+        s3 = self.down3(torch.cat((s2, mask_guide[2], c0[2], c1[2]), 1))  # 28
         s3 = self.cbam3(s3) + s3
         x = self.up0(torch.cat((s3, c0[3], c1[3]), 1))  # 14
         x = self.up1(torch.cat((x, s2), 1))
@@ -341,7 +368,7 @@ class UnetCBAM_M(nn.Module):
 class UnetCBAM_M_Res(nn.Module):
     def __init__(self):
         super(UnetCBAM_M_Res, self).__init__()
-        self.down0 = DBlock(17 , 2 * c)
+        self.down0 = DBlock(17, 2 * c)
         self.down1 = DBlock(4 * c + 1, 4 * c)  # 64 + 1  -> 64  有mask
         self.down2 = DBlock(8 * c + 1, 8 * c)  # 128 + 1 -> 128  有mask
         self.down3 = DBlock(16 * c + 1, 16 * c)  # 256 + 1 -> 256  有mask
@@ -360,11 +387,11 @@ class UnetCBAM_M_Res(nn.Module):
     def forward(self, img0, img1, warped_img0, warped_img1, mask, flow, c0, c1, mask_guide):
         s0 = self.down0(torch.cat((img0, img1, warped_img0, warped_img1, mask, flow), 1))
         s0 = self.cbam0(s0) + s0
-        s1 = self.down1(torch.cat((s0,  mask_guide[0], c0[0], c1[0]), 1))  # 112
+        s1 = self.down1(torch.cat((s0, mask_guide[0], c0[0], c1[0]), 1))  # 112
         s1 = self.cbam1(s1) + s1
-        s2 = self.down2(torch.cat((s1,  mask_guide[1], c0[1], c1[1]), 1))  # 56
+        s2 = self.down2(torch.cat((s1, mask_guide[1], c0[1], c1[1]), 1))  # 56
         s2 = self.cbam2(s2) + s2
-        s3 = self.down3(torch.cat((s2,  mask_guide[2], c0[2], c1[2]), 1))  # 28
+        s3 = self.down3(torch.cat((s2, mask_guide[2], c0[2], c1[2]), 1))  # 28
         s3 = self.cbam3(s3) + s3
         x = self.up0(torch.cat((s3, c0[3], c1[3]), 1))  # 14
         x = self.up1(torch.cat((x, s2), 1))
@@ -377,7 +404,7 @@ class UnetCBAM_M_Res(nn.Module):
 class UnetCBAM_M_Res_L(nn.Module):
     def __init__(self):
         super(UnetCBAM_M_Res_L, self).__init__()
-        self.down0 = DBlock(17 , 2 * c, down=False)
+        self.down0 = DBlock(17, 2 * c, down=False)
         self.down1 = DBlock(4 * c + 1, 4 * c)  # 64 + 1  -> 64  有mask
         self.down2 = DBlock(8 * c + 1, 8 * c)  # 128 + 1 -> 128  有mask
         self.down3 = DBlock(16 * c + 1, 16 * c)  # 256 + 1 -> 256  有mask
@@ -396,11 +423,11 @@ class UnetCBAM_M_Res_L(nn.Module):
     def forward(self, img0, img1, warped_img0, warped_img1, mask, flow, c0, c1, mask_guide):
         s0 = self.down0(torch.cat((img0, img1, warped_img0, warped_img1, mask, flow), 1))
         s0 = self.cbam0(s0) + s0
-        s1 = self.down1(torch.cat((s0,  mask_guide[0], c0[0], c1[0]), 1))  # 112
+        s1 = self.down1(torch.cat((s0, mask_guide[0], c0[0], c1[0]), 1))  # 112
         s1 = self.cbam1(s1) + s1
-        s2 = self.down2(torch.cat((s1,  mask_guide[1], c0[1], c1[1]), 1))  # 56
+        s2 = self.down2(torch.cat((s1, mask_guide[1], c0[1], c1[1]), 1))  # 56
         s2 = self.cbam2(s2) + s2
-        s3 = self.down3(torch.cat((s2,  mask_guide[2], c0[2], c1[2]), 1))  # 28
+        s3 = self.down3(torch.cat((s2, mask_guide[2], c0[2], c1[2]), 1))  # 28
         s3 = self.cbam3(s3) + s3
         x = self.up0(torch.cat((s3, c0[3], c1[3]), 1))  # 14
         x = self.up1(torch.cat((x, s2), 1))
@@ -409,10 +436,11 @@ class UnetCBAM_M_Res_L(nn.Module):
         x = self.conv(x)
         return torch.sigmoid(x)
 
+
 class UnetCBAM_MH(nn.Module):
     def __init__(self):
         super(UnetCBAM_MH, self).__init__()
-        self.down0 = Conv2(17 , 2 * c)
+        self.down0 = Conv2(17, 2 * c)
         self.down1 = Conv2(4 * c + 1, 4 * c)  # 64 + 1  -> 64  有mask
         self.down2 = Conv2(8 * c + c + 1, 8 * c)  # 128 + 16 + 1 -> 128  有mask
         self.down3 = Conv2(16 * c + 2 * c + 1, 16 * c)  # 256 + 32 + 1 -> 256  有mask
@@ -431,11 +459,11 @@ class UnetCBAM_MH(nn.Module):
     def forward(self, img0, img1, warped_img0, warped_img1, mask, flow, c0, c1, hybs, mask_guide):
         s0 = self.down0(torch.cat((img0, img1, warped_img0, warped_img1, mask, flow), 1))
         s0 = self.cbam0(s0) + s0
-        s1 = self.down1(torch.cat((s0,  mask_guide[0], c0[0], c1[0]), 1))  # 112
+        s1 = self.down1(torch.cat((s0, mask_guide[0], c0[0], c1[0]), 1))  # 112
         s1 = self.cbam1(s1) + s1
-        s2 = self.down2(torch.cat((s1,  mask_guide[1], c0[1], c1[1], hybs[2]), 1))  # 56
+        s2 = self.down2(torch.cat((s1, mask_guide[1], c0[1], c1[1], hybs[2]), 1))  # 56
         s2 = self.cbam2(s2) + s2
-        s3 = self.down3(torch.cat((s2,  mask_guide[2], c0[2], c1[2], hybs[1]), 1))  # 28
+        s3 = self.down3(torch.cat((s2, mask_guide[2], c0[2], c1[2], hybs[1]), 1))  # 28
         s3 = self.cbam3(s3) + s3
         x = self.up0(torch.cat((s3, c0[3], c1[3], hybs[0]), 1))  # 14
         x = self.up1(torch.cat((x, s2), 1))
@@ -467,11 +495,11 @@ class UnetCBAM_M_L(nn.Module):
     def forward(self, img0, img1, warped_img0, warped_img1, mask, flow, c0, c1, mask_guide):
         s0 = self.down0(torch.cat((img0, img1, warped_img0, warped_img1, mask, flow), 1))
         s0 = self.cbam0(s0) + s0
-        s1 = self.down1(torch.cat((s0,  mask_guide[0], c0[0], c1[0]), 1))  # 112
+        s1 = self.down1(torch.cat((s0, mask_guide[0], c0[0], c1[0]), 1))  # 112
         s1 = self.cbam1(s1) + s1
-        s2 = self.down2(torch.cat((s1,  mask_guide[1], c0[1], c1[1] ), 1))  # 56
+        s2 = self.down2(torch.cat((s1, mask_guide[1], c0[1], c1[1]), 1))  # 56
         s2 = self.cbam2(s2) + s2
-        s3 = self.down3(torch.cat((s2,  mask_guide[2], c0[2], c1[2]), 1))  # 28
+        s3 = self.down3(torch.cat((s2, mask_guide[2], c0[2], c1[2]), 1))  # 28
         s3 = self.cbam3(s3) + s3
         x = self.up0(torch.cat((s3, c0[3], c1[3]), 1))  # 14
         x = self.up1(torch.cat((x, s2), 1))
@@ -503,11 +531,11 @@ class UnetCBAM_MH_L(nn.Module):
     def forward(self, img0, img1, warped_img0, warped_img1, mask, flow, c0, c1, hybs, mask_guide):
         s0 = self.down0(torch.cat((img0, img1, warped_img0, warped_img1, mask, flow), 1))
         s0 = self.cbam0(s0) + s0
-        s1 = self.down1(torch.cat((s0,  mask_guide[0], c0[0], c1[0]), 1))  # 112
+        s1 = self.down1(torch.cat((s0, mask_guide[0], c0[0], c1[0]), 1))  # 112
         s1 = self.cbam1(s1) + s1
-        s2 = self.down2(torch.cat((s1,  mask_guide[1], c0[1], c1[1], hybs[2]), 1))  # 56
+        s2 = self.down2(torch.cat((s1, mask_guide[1], c0[1], c1[1], hybs[2]), 1))  # 56
         s2 = self.cbam2(s2) + s2
-        s3 = self.down3(torch.cat((s2,  mask_guide[2], c0[2], c1[2], hybs[1]), 1))  # 28
+        s3 = self.down3(torch.cat((s2, mask_guide[2], c0[2], c1[2], hybs[1]), 1))  # 28
         s3 = self.cbam3(s3) + s3
         x = self.up0(torch.cat((s3, c0[3], c1[3], hybs[0]), 1))  # 14
         x = self.up1(torch.cat((x, s2), 1))
@@ -515,7 +543,6 @@ class UnetCBAM_MH_L(nn.Module):
         x = self.up3(torch.cat((x, s0), 1))
         x = self.conv(x)
         return torch.sigmoid(x)
-
 
 
 class GBlock(nn.Module):
@@ -532,7 +559,7 @@ class GBlock(nn.Module):
         self.learnable_sc = in_channels != out_channels or self.upsample
         if self.learnable_sc:
             self.conv_sc = nn.Conv2d(in_channels, out_channels,
-                                           kernel_size=1, padding=0)
+                                     kernel_size=1, padding=0)
         # Batchnorm layers
         self.bn1 = nn.BatchNorm2d(in_channels)
         self.bn2 = nn.BatchNorm2d(out_channels)
@@ -565,7 +592,7 @@ class DBlock(nn.Module):
 
         # Conv layers
         self.conv1 = nn.Conv2d(self.in_channels, self.hidden_channels, 3, padding=1)
-        self.conv2 = nn.Conv2d(self.hidden_channels, self.out_channels,3, padding=1)
+        self.conv2 = nn.Conv2d(self.hidden_channels, self.out_channels, 3, padding=1)
         self.learnable_sc = True if (in_channels != out_channels) or self.downsample else False
         if self.learnable_sc:
             self.conv_sc = self.which_conv(in_channels, out_channels,
@@ -604,6 +631,7 @@ class UnetCBAM_Res(nn.Module):
     """
     用于base模型，使用了CBAM, 使用Residual模块替代普通的卷积块
     """
+
     def __init__(self):
         super(UnetCBAM_Res, self).__init__()
         self.down0 = DBlock(17, 2 * c)
@@ -643,6 +671,7 @@ class UnetCBAM_L_Res(nn.Module):
     """
     用于Larger模型，使用了CBAM, 使用Residual模块替代普通的卷积块
     """
+
     def __init__(self):
         super(UnetCBAM_L_Res, self).__init__()
         self.down0 = DBlock(17, 2 * c, down=False)
@@ -681,7 +710,7 @@ class UnetCBAM_L_Res(nn.Module):
 class UnetCBAM_MH_Res(nn.Module):
     def __init__(self):
         super(UnetCBAM_MH_Res, self).__init__()
-        self.down0 = DBlock(17 , 2 * c)
+        self.down0 = DBlock(17, 2 * c)
         self.down1 = DBlock(4 * c + 1, 4 * c)  # 64 + 1  -> 64  有mask
         self.down2 = DBlock(8 * c + c + 1, 8 * c)  # 128 + 16 + 1 -> 128  有mask
         self.down3 = DBlock(16 * c + 2 * c + 1, 16 * c)  # 256 + 32 + 1 -> 256  有mask
@@ -700,11 +729,11 @@ class UnetCBAM_MH_Res(nn.Module):
     def forward(self, img0, img1, warped_img0, warped_img1, mask, flow, c0, c1, hybs, mask_guide):
         s0 = self.down0(torch.cat((img0, img1, warped_img0, warped_img1, mask, flow), 1))
         s0 = self.cbam0(s0) + s0
-        s1 = self.down1(torch.cat((s0,  mask_guide[0], c0[0], c1[0]), 1))  # 112
+        s1 = self.down1(torch.cat((s0, mask_guide[0], c0[0], c1[0]), 1))  # 112
         s1 = self.cbam1(s1) + s1
-        s2 = self.down2(torch.cat((s1,  mask_guide[1], c0[1], c1[1], hybs[2]), 1))  # 56
+        s2 = self.down2(torch.cat((s1, mask_guide[1], c0[1], c1[1], hybs[2]), 1))  # 56
         s2 = self.cbam2(s2) + s2
-        s3 = self.down3(torch.cat((s2,  mask_guide[2], c0[2], c1[2], hybs[1]), 1))  # 28
+        s3 = self.down3(torch.cat((s2, mask_guide[2], c0[2], c1[2], hybs[1]), 1))  # 28
         s3 = self.cbam3(s3) + s3
         x = self.up0(torch.cat((s3, c0[3], c1[3], hybs[0]), 1))  # 14
         x = self.up1(torch.cat((x, s2), 1))
@@ -736,11 +765,11 @@ class UnetCBAM_MH_Res_L(nn.Module):
     def forward(self, img0, img1, warped_img0, warped_img1, mask, flow, c0, c1, hybs, mask_guide):
         s0 = self.down0(torch.cat((img0, img1, warped_img0, warped_img1, mask, flow), 1))
         s0 = self.cbam0(s0) + s0
-        s1 = self.down1(torch.cat((s0,  mask_guide[0], c0[0], c1[0]), 1))  # 112
+        s1 = self.down1(torch.cat((s0, mask_guide[0], c0[0], c1[0]), 1))  # 112
         s1 = self.cbam1(s1) + s1
-        s2 = self.down2(torch.cat((s1,  mask_guide[1], c0[1], c1[1], hybs[2]), 1))  # 56
+        s2 = self.down2(torch.cat((s1, mask_guide[1], c0[1], c1[1], hybs[2]), 1))  # 56
         s2 = self.cbam2(s2) + s2
-        s3 = self.down3(torch.cat((s2,  mask_guide[2], c0[2], c1[2], hybs[1]), 1))  # 28
+        s3 = self.down3(torch.cat((s2, mask_guide[2], c0[2], c1[2], hybs[1]), 1))  # 28
         s3 = self.cbam3(s3) + s3
         x = self.up0(torch.cat((s3, c0[3], c1[3], hybs[0]), 1))  # 14
         x = self.up1(torch.cat((x, s2), 1))
@@ -754,6 +783,7 @@ class UnetCBAM_L_M_pmask(nn.Module):
     """
     用于Large版本的模型，使用了CBAM， patch mask， 运动信息
     """
+
     def __init__(self):
         super(UnetCBAM_L_M_pmask, self).__init__()
         self.down0 = Conv2(17, 2 * c, 1)
@@ -775,7 +805,7 @@ class UnetCBAM_L_M_pmask(nn.Module):
     def forward(self, img0, img1, warped_img0, warped_img1, mask, flow, c0, c1, edge, mo, guide_list):
         s0 = self.down0(torch.cat((img0, img1, warped_img0, warped_img1, mask, flow), 1))
         s0 = self.cbam0(s0) + s0
-        s1 = self.down1(torch.cat((guide_list[0], s0, c0[0], c1[0], ), 1))
+        s1 = self.down1(torch.cat((guide_list[0], s0, c0[0], c1[0],), 1))
         s1 = self.cbam1(s1) + s1
         s2 = self.down2(torch.cat((guide_list[0], s1, c0[1], c1[1]), 1))
         s2 = self.cbam2(s2) + s2
@@ -1121,7 +1151,6 @@ class Unet_FF_M(nn.Module):
 
         x = self.conv(fa0)
         return torch.sigmoid(x)
-
 
 
 def get_rec_region(tensor, low, high):
