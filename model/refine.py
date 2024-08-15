@@ -10,8 +10,6 @@ from PIL import Image
 import matplotlib.pyplot as plt
 import functools
 
-from model.lomar.models_lomar import mae_vit_base_patch16
-from model.lomar.models_vit import vit_base_patch16_decoder
 from model.mae.models_mae import mae_vit_spe_base_patch16_dec512d8b, mae_vit_spe_base_patch8_tiny
 
 from model.warplayer import warp
@@ -46,6 +44,61 @@ class Conv2(nn.Module):
         x = self.conv1(x)
         x = self.conv2(x)
         return x
+
+
+class DepthwiseSeparableConv(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, padding=1):
+        super(DepthwiseSeparableConv, self).__init__()
+
+        # 深度卷积：每个输入通道对应一个卷积核
+        self.depthwise = nn.Conv2d(in_channels, in_channels, kernel_size=kernel_size,
+                                   stride=stride, padding=padding, groups=in_channels)
+
+        # 逐点卷积：1x1卷积，将深度卷积的输出通道数转化为所需的输出通道数
+        self.pointwise = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+
+    def forward(self, x):
+        x = self.depthwise(x)
+        x = self.pointwise(x)
+        return x
+
+
+class DepthwiseSeparableDeConv(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(DepthwiseSeparableDeConv, self).__init__()
+
+        # 深度卷积：每个输入通道对应一个卷积核
+        self.depthwise = nn.ConvTranspose2d(in_channels=in_channels, out_channels=in_channels, kernel_size=4, stride=2, padding=1,
+                                 bias=True, groups=in_channels)
+
+        # 逐点卷积：1x1卷积，将深度卷积的输出通道数转化为所需的输出通道数
+        self.pointwise = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+
+    def forward(self, x):
+        x = self.depthwise(x)
+        x = self.pointwise(x)
+        return x
+
+def dwConv(in_channels, kernel_size=3, stride=1, padding=1):
+    return nn.Sequential(
+        nn.Conv2d(in_channels, in_channels, kernel_size=kernel_size,
+                  stride=stride, padding=padding, groups=in_channels),
+        nn.PReLU(in_channels)
+    )
+
+
+def DSConv(in_channels, out_channels, kernel_size=3, stride=1, padding=1):
+    return nn.Sequential(
+        DepthwiseSeparableConv(in_channels, out_channels, kernel_size=kernel_size, stride=stride, padding=padding),
+        nn.PReLU(out_channels)
+    )
+
+
+def DSCDeconv(in_channels, out_channels):
+    return nn.Sequential(
+        DepthwiseSeparableDeConv(in_channels, out_channels),
+        nn.PReLU(out_channels)
+    )
 
 
 c = 16
@@ -385,6 +438,42 @@ class UnetCBAM_MH(nn.Module):
         s3 = self.down3(torch.cat((s2,  mask_guide[2], c0[2], c1[2], hybs[1]), 1))  # 28
         s3 = self.cbam3(s3) + s3
         x = self.up0(torch.cat((s3, c0[3], c1[3], hybs[0]), 1))  # 14
+        x = self.up1(torch.cat((x, s2), 1))
+        x = self.up2(torch.cat((x, s1), 1))
+        x = self.up3(torch.cat((x, s0), 1))
+        x = self.conv(x)
+        return torch.sigmoid(x)
+
+
+class UnetCBAM_M_L(nn.Module):
+    def __init__(self):
+        super(UnetCBAM_M_L, self).__init__()
+        self.down0 = DSConv(17, 2 * c, stride=1)
+        self.down1 = DSConv(4 * c + 1, 4 * c, stride=2)  # 64 + 1  -> 64  有mask
+        self.down2 = DSConv(8 * c + 1, 8 * c, stride=2)  # 128 + 16 + 1 -> 128  有mask
+        self.down3 = DSConv(16 * c + 1, 16 * c, stride=2)  # 256 + 32 + 1 -> 256  有mask
+
+        self.cbam0 = CBAM(channels=2 * c)
+        self.cbam1 = CBAM(channels=4 * c)
+        self.cbam2 = CBAM(channels=8 * c)
+        self.cbam3 = CBAM(channels=16 * c)
+
+        self.up0 = DSCDeconv(32 * c, 8 * c)  # 512  -> 128
+        self.up1 = DSCDeconv(16 * c, 4 * c)  # 256 -> 64
+        self.up2 = DSCDeconv(8 * c, 2 * c)  # 128 -> 32
+        self.up3 = DSCDeconv(4 * c, c)  # 64 -> 16
+        self.conv = nn.Conv2d(c, 3, 3, 2, 1)
+
+    def forward(self, img0, img1, warped_img0, warped_img1, mask, flow, c0, c1, mask_guide):
+        s0 = self.down0(torch.cat((img0, img1, warped_img0, warped_img1, mask, flow), 1))
+        s0 = self.cbam0(s0) + s0
+        s1 = self.down1(torch.cat((s0,  mask_guide[0], c0[0], c1[0]), 1))  # 112
+        s1 = self.cbam1(s1) + s1
+        s2 = self.down2(torch.cat((s1,  mask_guide[1], c0[1], c1[1] ), 1))  # 56
+        s2 = self.cbam2(s2) + s2
+        s3 = self.down3(torch.cat((s2,  mask_guide[2], c0[2], c1[2]), 1))  # 28
+        s3 = self.cbam3(s3) + s3
+        x = self.up0(torch.cat((s3, c0[3], c1[3]), 1))  # 14
         x = self.up1(torch.cat((x, s2), 1))
         x = self.up2(torch.cat((x, s1), 1))
         x = self.up3(torch.cat((x, s0), 1))
@@ -1033,29 +1122,6 @@ class Unet_FF_M(nn.Module):
         x = self.conv(fa0)
         return torch.sigmoid(x)
 
-
-
-class UNetMAEViT(nn.Module):
-    def __init__(self):
-        super(UNetMAEViT, self).__init__()
-        self.unet_cbam = UnetCBAM()
-        self.mae_vit = mae_vit_base_patch16()
-        self.decoder = vit_base_patch16_decoder()
-
-    def forward(self, img0, img1, warped_img0, warped_img1, mask, flow, c0, c1):
-        # U-Net 阶段
-        unet_output = self.unet_cbam(img0, img1, warped_img0, warped_img1, mask, flow, c0, c1)
-
-        # MAE ViT 编码阶段
-        mae_vit_loss, mae_vit_output, mask_indices_encoder = self.mae_vit(unet_output)
-
-        # 解码阶段
-        decode_out = self.decoder.forward_features(mae_vit_output)
-        mae_img_pred = self.mae_vit.unpatchify(decode_out)  # 解码出完整图片
-        mae_img_pred = torch.sigmoid(mae_img_pred)  # 变正数符合像素要求
-
-        # 可以根据需要返回 U-Net 输出、MAE ViT 输出等
-        return unet_output, mae_img_pred, mae_vit_output, mae_vit_loss, mask_indices_encoder
 
 
 def get_rec_region(tensor, low, high):
